@@ -4,10 +4,12 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
+using System.Xml.Linq;
 
 namespace BloodborneLauncher;
 
@@ -78,6 +80,7 @@ public partial class MainWindow : Window
 
     readonly string root;
     readonly string statePath;
+    readonly string modsDir;
     LauncherState state = new();
     bool syncing;
     bool gameRunning;
@@ -87,7 +90,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         root = FindProjectRoot();
         statePath = Path.Combine(root, "launcher-settings.json");
-        ModsFolderText.Text = Path.Combine(root, "mods");
+        modsDir = FindModsDir(root);
         ConfigureCameraChoices();
         ConfigureGraphicsChoices();
         LoadState();
@@ -102,11 +105,22 @@ public partial class MainWindow : Window
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         for (int i = 0; i < 8 && dir != null; ++i, dir = dir.Parent)
         {
-            if (File.Exists(Path.Combine(dir.FullName, "run.bat")) &&
-                File.Exists(Path.Combine(dir.FullName, "build.sh")))
+            if (File.Exists(Path.Combine(dir.FullName, "scripts", "run_windows.py")))
                 return Path.TrimEndingDirectorySeparator(dir.FullName);
         }
         return AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
+    }
+
+    // An install upgraded by build-launcher.ps1 records the repository (out\repo_dir.txt) and uses its mods folder.
+    static string FindModsDir(string root)
+    {
+        try
+        {
+            string repoMods = Path.Combine(File.ReadAllText(Path.Combine(root, "out", "repo_dir.txt")).Trim(), "mods");
+            if (Directory.Exists(repoMods)) return repoMods;
+        }
+        catch { }
+        return Path.Combine(root, "mods");
     }
 
     static string NormalizeDlssModel(string value)
@@ -123,20 +137,27 @@ public partial class MainWindow : Window
         {
             if (File.Exists(statePath))
                 state = JsonSerializer.Deserialize<LauncherState>(File.ReadAllText(statePath)) ?? new();
-            else
+        }
+        catch
+        {
+            // A damaged settings file falls back to the copy kept by the previous save.
+            try
             {
-                string remembered = Path.Combine(root, "out", "game_dir.txt");
-                if (File.Exists(remembered)) state.GamePath = File.ReadAllText(remembered).Trim();
+                state = JsonSerializer.Deserialize<LauncherState>(File.ReadAllText(statePath + ".bak")) ?? new();
+                FooterMessage.Text = "launcher-settings.json could not be read; loaded the last backup";
+            }
+            catch
+            {
+                state = new();
+                FooterMessage.Text = "launcher-settings.json could not be read; using default settings";
             }
         }
-        catch {
-            try { state = JsonSerializer.Deserialize<LauncherState>(File.ReadAllText(statePath + ".bak")) ?? new(); }
-            catch { state = new(); }
-        }
+        // Portable layout: the dump always sits next to the launcher as CUSA03173.
+        state.GamePath = Path.Combine(root, "CUSA03173");
+        ini = LoadIni();
         state.DlssModel = NormalizeDlssModel(ReadIniValue("dlss_preset") ?? state.DlssModel);
-        // Normalize malformed frame-rate selections before displaying or launching.
+        // Migrate retired or malformed frame-rate selections before displaying or launching.
         state.Fps = NormalizeFps(state.Fps);
-        if (RequiresVSync(state.Fps)) state.PresentMode = "Fifo";
         string? mirror = ReadIniValue("change_appearance");
         if (mirror != null) state.ChangeAppearance = mirror == "1";
         string? rebirth = ReadIniValue("rebirth");
@@ -164,16 +185,6 @@ public partial class MainWindow : Window
     }
 
     static string NormalizeFps(string? value) => value is "30" or "60" or "90" or "120" or "uncap" ? value : "60";
-    static bool RequiresVSync(string fps) => fps is "120" or "uncap";
-
-    void UpdatePresentModeAvailability()
-    {
-        bool required = RequiresVSync(NormalizeFps(ComboTag(FpsCombo, "60")));
-        if (required) SetComboTag(PresentCombo, "Fifo");
-        PresentCombo.IsEnabled = !required;
-        PresentCombo.ToolTip = required ? "120 FPS and Unlimited use FIFO (VSync)." : null;
-        ToolTipService.SetShowOnDisabled(PresentCombo, true);
-    }
 
     static string CameraScale(string? value, double min)
     {
@@ -213,17 +224,22 @@ public partial class MainWindow : Window
         SetComboTag(box, value);
     }
 
-    string? ReadIniValue(string key)
+    Dictionary<string, string> ini = new();
+
+    Dictionary<string, string> LoadIni()
     {
+        var values = new Dictionary<string, string>();
         string path = Path.Combine(root, "bbport.ini");
-        if (!File.Exists(path)) return null;
+        if (!File.Exists(path)) return values;
         foreach (string line in File.ReadLines(path))
         {
             int equals = line.IndexOf('=');
-            if (equals > 0 && line[..equals].Trim() == key) return line[(equals + 1)..].Trim();
+            if (equals > 0) values.TryAdd(line[..equals].Trim(), line[(equals + 1)..].Trim());
         }
-        return null;
+        return values;
     }
+
+    string? ReadIniValue(string key) => ini.GetValueOrDefault(key);
 
     void ApplyStateToUi()
     {
@@ -243,7 +259,6 @@ public partial class MainWindow : Window
         QuickPreset.SelectedIndex = int.TryParse(state.Preset, out int p) ? Math.Clamp(p, 0, 4) : 1;
         SetComboTag(FpsCombo, state.Fps);
         SetQuickFps(state.Fps);
-        UpdatePresentModeAvailability();
 
         SetComboTag(LanguageCombo, state.Language);
         SetComboTag(LiveResolutionCombo, state.LiveResolution);
@@ -293,7 +308,6 @@ public partial class MainWindow : Window
         state.Preset = ComboTag(PresetCombo, "1");
         state.DlssModel = NormalizeDlssModel(ComboTag(DlssModelCombo, "Auto"));
         state.Fps = NormalizeFps(ComboTag(FpsCombo, "60"));
-        UpdatePresentModeAvailability();
         state.PresentMode = ComboTag(PresentCombo);
         state.Language = ComboTag(LanguageCombo, "1");
         state.LiveResolution = ComboTag(LiveResolutionCombo, "0");
@@ -382,7 +396,7 @@ public partial class MainWindow : Window
         }
         catch (Exception error)
         {
-            FooterMessage.Text = "No se pudieron guardar las opciones: " + error.Message;
+            FooterMessage.Text = "Could not save settings: " + error.Message;
             OnlineStatus.Text = FooterMessage.Text;
             return false;
         }
@@ -410,15 +424,14 @@ public partial class MainWindow : Window
         WriteSafely(path, string.Join("\r\n", lines) + "\r\n");
     }
 
+    // Write beside the target and swap it in, so a crash mid-save never truncates the file;
+    // the previous version is kept as .bak.
     static void WriteSafely(string path, string text)
     {
-        string temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        try {
-            File.WriteAllText(temp, text);
-            if (File.Exists(path)) File.Replace(temp, path, path + ".bak");
-            else File.Move(temp, path);
-        }
-        finally { if (File.Exists(temp)) File.Delete(temp); }
+        string temp = path + ".tmp";
+        File.WriteAllText(temp, text);
+        if (File.Exists(path)) File.Replace(temp, path, path + ".bak");
+        else File.Move(temp, path);
     }
 
     void RefreshStatus()
@@ -429,14 +442,13 @@ public partial class MainWindow : Window
         string version = DetectGameVersion(game);
         bool valid = eboot && sce;
 
-        GamePathStatus.Text = valid ? game : "Select Bloodborne folder";
         GameVersionStatus.Text = valid ? version : "Not configured";
         GameVersionStatus.Foreground = valid && version.Contains("1.09") ?
             new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(117, 207, 121)) :
             new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(210, 107, 112));
-        PathValidationText.Text = valid ? $"Game dump detected · {version}" : "Choose the folder containing eboot.bin and sce_sys.";
+        PathValidationText.Text = valid ? $"Game dump detected · {version}" : "Put the CUSA03173 folder (eboot.bin and sce_sys) next to the launcher.";
         PlayButton.IsEnabled = valid && !gameRunning;
-        PlayHint.Text = valid ? "Ready. Settings are saved automatically when Play is pressed." : "Select a valid Bloodborne dump before playing.";
+        PlayHint.Text = valid ? "Ready. Settings are saved automatically when Play is pressed." : "Put a valid Bloodborne dump in the CUSA03173 folder before playing.";
 
         string probe = Path.Combine(root, "out", "bb-probe.exe");
         RuntimeStatus.Text = File.Exists(probe) ? "Ready" : "Not built";
@@ -475,6 +487,8 @@ public partial class MainWindow : Window
         catch { return "Dump found · version unknown"; }
     }
 
+    bool gpuDetected;
+
     async void DetectGpu()
     {
         string caps = Path.Combine(root, "out", "bb-gpu-capabilities.exe");
@@ -484,6 +498,9 @@ public partial class MainWindow : Window
             FooterGpu.Text = "   |   GPU unknown";
             return;
         }
+        // The GPU cannot change while the launcher is open: probe Vulkan once per session.
+        if (gpuDetected) return;
+        gpuDetected = true;
         try
         {
             var psi = new ProcessStartInfo(caps, "--live-resolution")
@@ -514,7 +531,7 @@ public partial class MainWindow : Window
 
     void LoadHeroImage()
     {
-        HeroImage.Source = new BitmapImage(new Uri("pack://application:,,,/BloodborneLauncher;component/Assets/hunter-background.png"));
+        HeroImage.Source = new BitmapImage(new Uri("pack://application:,,,/BloodborneLauncher;component/Assets/hunter-background.jpg"));
         string game = PathBox.Text.Trim();
         string[] candidates =
         {
@@ -554,10 +571,13 @@ public partial class MainWindow : Window
             MessageBox.Show("Select a valid Bloodborne folder first.", "Bloodborne PC", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-        string runBat = Path.Combine(root, "run.bat");
-        if (!File.Exists(runBat))
+        // The packaged Python first, then MSYS2's (source checkouts); BB_PYTHON overrides both.
+        string python = Environment.GetEnvironmentVariable("BB_PYTHON") ?? Path.Combine(root, "tools", "python", "python.exe");
+        if (!File.Exists(python))
+            python = Path.Combine(Environment.GetEnvironmentVariable("BB_MSYS2") ?? @"C:\msys64", "clang64", "bin", "python.exe");
+        if (!File.Exists(python))
         {
-            MessageBox.Show("run.bat was not found next to the runtime.", "Bloodborne PC", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show("Python runtime not found. Use the packaged build, or install MSYS2 and set BB_MSYS2.", "Bloodborne PC", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
         try
@@ -566,13 +586,13 @@ public partial class MainWindow : Window
             Directory.CreateDirectory(logsDir);
             string logPath = Path.Combine(logsDir, $"bbport-{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.log");
 
-            var psi = new ProcessStartInfo("cmd.exe")
+            var psi = new ProcessStartInfo(python)
             {
                 WorkingDirectory = root,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 WindowStyle = ProcessWindowStyle.Hidden,
-                Arguments = $"/c \"\"{runBat}\" --game-dir \"{state.GamePath}\"\""
+                Arguments = $"\"{Path.Combine(root, "scripts", "run_windows.py")}\" --game-dir \"{state.GamePath}\""
             };
             psi.Environment["BB_PREBUILT"] = "1";
             psi.Environment["BB_DATA_DIR"] = root;
@@ -584,6 +604,7 @@ public partial class MainWindow : Window
             psi.Environment["BB_LANGUAGE"] = state.Language;
             psi.Environment["BB_GAMEPAD_INDEX"] = state.GamepadIndex.ToString();
             psi.Environment["BB_MODS_ENABLED"] = state.ModsEnabled ? "1" : "0";
+            psi.Environment["BB_MODS_DIR"] = modsDir;
             psi.Environment["BB_LOG_FILE"] = logPath;
             psi.Environment["PYTHONUNBUFFERED"] = "1";
             if (!string.IsNullOrEmpty(state.PresentMode)) psi.Environment["BB_PRESENT_MODE"] = state.PresentMode;
@@ -618,7 +639,7 @@ public partial class MainWindow : Window
             };
             gameRunning=true;
             PlayButton.IsEnabled=false;
-            if(!gameProcess.Start()) throw new InvalidOperationException("No se pudo iniciar el juego.");
+            if(!gameProcess.Start()) throw new InvalidOperationException("Could not start the game.");
             FooterMessage.Text = $"Started · log: {Path.GetFileName(logPath)}";
             Hide();
         }
@@ -632,23 +653,106 @@ public partial class MainWindow : Window
 
     void Save_Click(object sender, RoutedEventArgs e) => SaveSettings();
 
-    void BrowseGame_Click(object sender, RoutedEventArgs e)
+    // One switch per folder in mods/ (mods.json "disabled", scripts/mods.py) and one per shadPS4 patch
+    // XML in a mod folder, loose in mods/ or in patches/ (patches.json, scripts/patches.py mod_patches).
+    // A mod's eboot.bin needs no switch of its own: patches.py applies it with the mod.
+    string ModsConfigPath => Path.Combine(root, "mods.json");
+    string PatchesConfigPath => Path.Combine(root, "patches.json");
+    static readonly HashSet<string> BloodborneIds = new() { "CUSA00207", "CUSA00208", "CUSA00900", "CUSA01363", "CUSA03173", "CUSA03023" };
+
+    static JsonObject ReadJson(string path)
     {
-        var dialog = new OpenFolderDialog { Title = "Select the Bloodborne v1.09 folder" };
-        if (!string.IsNullOrWhiteSpace(PathBox.Text) && Directory.Exists(PathBox.Text))
-            dialog.InitialDirectory = PathBox.Text;
-        if (dialog.ShowDialog() == true)
-        {
-            PathBox.Text = dialog.FolderName;
-            state.GamePath = dialog.FolderName;
-            LoadHeroImage();
-            RefreshStatus();
-        }
+        try { return JsonNode.Parse(File.ReadAllText(path)) as JsonObject ?? new(); }
+        catch { return new(); }
     }
+
+    static HashSet<string> JsonNames(JsonObject config, string key) =>
+        (config[key] as JsonArray)?.Select(n => n?.ToString() ?? "").ToHashSet() ?? new();
+
+    // (key, patch name, isEnabled) of the 1.09 eboot patches in dir's XML files, as patches.py external_patches.
+    List<(string Key, string Name, bool Default)> PatchesIn(string dir, SearchOption depth)
+    {
+        var found = new List<(string, string, bool)>();
+        if (!Directory.Exists(dir)) return found;
+        string builtIn = Path.Combine(root, "patches", "Bloodborne.xml");
+        foreach (var file in Directory.GetFiles(dir, "*.xml", depth).Order(StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.Equals(Path.GetFullPath(file), builtIn, StringComparison.OrdinalIgnoreCase)) continue;
+            try
+            {
+                var xml = XDocument.Load(file);
+                var ids = xml.Descendants("ID").Select(e => e.Value.Trim()).ToList();
+                if (ids.Count > 0 && !ids.Any(BloodborneIds.Contains)) continue;
+                foreach (var meta in xml.Descendants("Metadata"))
+                    if ((string?)meta.Attribute("AppVer") == "01.09" && ((string?)meta.Attribute("AppElf") ?? "eboot.bin") == "eboot.bin")
+                        // Same keys as patches.py: mods/<path under mods>/<name>, so same-named XMLs in two mods stay distinct.
+                        found.Add(($"{(dir.StartsWith(modsDir, StringComparison.OrdinalIgnoreCase) ? "mods/" + Path.GetRelativePath(modsDir, file).Replace('\\', '/') : Path.GetFileName(file))}/{(string?)meta.Attribute("Name")}", (string?)meta.Attribute("Name") ?? "",
+                                   string.Equals((string?)meta.Attribute("isEnabled"), "true", StringComparison.OrdinalIgnoreCase)));
+            }
+            catch { }  // patches.py reports unreadable files at launch
+        }
+        return found;
+    }
+
+    void LoadModsList()
+    {
+        var disabledMods = JsonNames(ReadJson(ModsConfigPath), "disabled");
+        var patchConfig = ReadJson(PatchesConfigPath);
+        var enabledPatches = JsonNames(patchConfig, "enabled");
+        var disabledPatches = JsonNames(patchConfig, "disabled");
+        // Rebuilt on every visit to the Mods page; switches not saved yet keep their state.
+        var shown = ModsList.Children.OfType<CheckBox>().ToDictionary(c => c.Tag.ToString()!, c => c.IsChecked == true);
+        ModsList.Children.Clear();
+        CheckBox Add(string tag, string label, bool on, double indent, CheckBox? parent = null)
+        {
+            var box = new CheckBox { Content = label, Tag = tag, Margin = new Thickness(indent, 4, 0, 0),
+                                     IsChecked = shown.TryGetValue(tag, out bool current) ? current : on };
+            if (parent != null) box.SetBinding(IsEnabledProperty, new System.Windows.Data.Binding("IsChecked") { Source = parent });
+            ModsList.Children.Add(box);
+            return box;
+        }
+        void AddPatches(IEnumerable<(string Key, string Name, bool Default)> patches, double indent, CheckBox? parent)
+        {
+            foreach (var p in patches)
+                Add("patch:" + p.Key, "Patch: " + p.Name, enabledPatches.Contains(p.Key) || (!disabledPatches.Contains(p.Key) && p.Default), indent, parent);
+        }
+        if (Directory.Exists(modsDir))
+            foreach (var dir in Directory.GetDirectories(modsDir).Order(StringComparer.OrdinalIgnoreCase))
+            {
+                string name = Path.GetFileName(dir);
+                var mod = Add("mod:" + name, File.Exists(Path.Combine(dir, "eboot.bin")) ? name + " (eboot.bin)" : name, !disabledMods.Contains(name), 0);
+                AddPatches(PatchesIn(dir, SearchOption.AllDirectories), 24, mod);
+            }
+        AddPatches(PatchesIn(modsDir, SearchOption.TopDirectoryOnly), 0, null);
+        AddPatches(PatchesIn(Path.Combine(root, "patches"), SearchOption.TopDirectoryOnly), 0, null);
+    }
+
+    void SaveModsList()
+    {
+        var boxes = ModsList.Children.OfType<CheckBox>().Select(c => (Tag: c.Tag.ToString()!, On: c.IsChecked == true)).ToList();
+        if (boxes.Count == 0) return;
+        var mods = ReadJson(ModsConfigPath);
+        mods["disabled"] = new JsonArray(boxes.Where(b => b.Tag.StartsWith("mod:") && !b.On).Select(b => (JsonNode?)b.Tag[4..]).ToArray());
+        WriteSafely(ModsConfigPath, mods.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        // Patches not shown (their file is gone) keep their entries.
+        var patches = ReadJson(PatchesConfigPath);
+        var enabled = JsonNames(patches, "enabled");
+        var disabled = JsonNames(patches, "disabled");
+        foreach (var (tag, on) in boxes.Where(b => b.Tag.StartsWith("patch:")))
+        {
+            string key = tag[6..];
+            (on ? enabled : disabled).Add(key);
+            (on ? disabled : enabled).Remove(key);
+        }
+        patches["enabled"] = new JsonArray(enabled.Order().Select(k => (JsonNode?)k).ToArray());
+        patches["disabled"] = new JsonArray(disabled.Order().Select(k => (JsonNode?)k).ToArray());
+        WriteSafely(PatchesConfigPath, patches.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
 
     void OpenMods_Click(object sender, RoutedEventArgs e)
     {
-        string mods = Path.Combine(root, "mods");
+        string mods = modsDir;
         Directory.CreateDirectory(mods);
         Process.Start(new ProcessStartInfo("explorer.exe", mods) { UseShellExecute = true });
     }
