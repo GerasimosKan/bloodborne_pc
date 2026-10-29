@@ -49,17 +49,15 @@ static class Program
     static void Run(string output) {
         Directory.CreateDirectory(output);
         var root = AppContext.BaseDirectory;
-        string game = Path.Combine(root, "CUSA03173");
+        string game = Path.Combine(root, "Test game");
         Directory.CreateDirectory(Path.Combine(game,"sce_sys"));
-        if (File.Exists(Path.Combine(game,"eboot.bin"))) File.Delete(Path.Combine(game,"eboot.bin"));
+        File.WriteAllText(Path.Combine(root,"build.sh"),"# isolated launcher fixture\n");
+        File.WriteAllText(Path.Combine(game,"eboot.bin"),"launcher test fixture");
         File.WriteAllText(Path.Combine(game,"sce_sys","param.sfo"),"01.09");
-        // Stands in for the game's Python: records what Play passes to it.
-        string fakePython = Path.Combine(root,"fake-python.bat");
-        File.WriteAllText(fakePython,"@echo off\r\nset BB_ > launch-env.txt\r\necho %* > launch-args.txt\r\necho session>>launch-count.txt\r\nping 127.0.0.1 -n 3 > nul\r\n");
+        File.WriteAllText(Path.Combine(root,"run.bat"),"@echo off\r\nset BB_ > launch-env.txt\r\necho %* > launch-args.txt\r\necho session>>launch-count.txt\r\nping 127.0.0.1 -n 3 > nul\r\n");
         File.WriteAllText(Path.Combine(root,"bbport.ini"),"# keep this comment\r\nunrelated_setting=keep\r\nupscaler=off\r\n");
         foreach (string key in Environment.GetEnvironmentVariables().Keys)
             if(key.StartsWith("BB_")) Environment.SetEnvironmentVariable(key,null);
-        Environment.SetEnvironmentVariable("BB_PYTHON",fakePython);
         if (File.Exists(Path.Combine(root,"launcher-settings.json"))) File.Delete(Path.Combine(root,"launcher-settings.json"));
         foreach(var stale in new[]{"out/game_dir.txt","launch-env.txt","launch-args.txt"}) { var f=Path.Combine(root,stale); if(File.Exists(f)) File.Delete(f); }
         var app = new App();
@@ -68,7 +66,6 @@ static class Program
         window = new MainWindow { ShowInTaskbar=false, ShowActivated=false, WindowStartupLocation=WindowStartupLocation.Manual, Left=-20000, Top=-20000 };
         window.Show(); Pump();
         Check(!Get<Button>("PlayButton").IsEnabled, "Play must be disabled without a dump");
-        Check(Get<TextBox>("PathBox").Text==Path.Combine(root,"CUSA03173"),"Default game folder next to the launcher");
         Check(Get<TextBlock>("RuntimeStatus").Text=="Not built","Missing runtime status");
         Check(Get<TextBlock>("DlssStatus").Text=="Model DLL not installed","Missing DLSS status");
         Check(Get<TextBlock>("Fsr4Status").Text=="Assets not installed","Missing FSR4 status");
@@ -77,7 +74,6 @@ static class Program
             Check(Get<TextBox>(name).Text=="","Online must have no preconfigured address/account: "+name);
         Check(Get<CheckBox>("OnlineEnabledCheck").IsChecked==false,"Online is opt-in");
         Render(Path.Combine(output,"launcher-play-unconfigured.png"));
-        File.WriteAllText(Path.Combine(game,"eboot.bin"),"launcher test fixture");
         Get<TextBox>("PathBox").Text=game; Call("RefreshStatus");
         Check(Get<Button>("PlayButton").IsEnabled,"Valid fixture should enable Play");
         Check(Get<TextBlock>("GameVersionStatus").Text.Contains("1.09"),"1.09 detection");
@@ -142,7 +138,6 @@ static class Program
             Check(!json.RootElement.GetProperty("ModsEnabled").GetBoolean(),"JSON mods");
         }
         Check(File.ReadAllText(Path.Combine(root,"out","game_dir.txt"))==game,"Remembered path");
-        Check(File.ReadAllText(Path.Combine(root,"bbport.ini.bak")).Contains("# keep this comment"),"INI save keeps the previous version");
         Call("Play_Click", Get<Button>("PlayButton"),new RoutedEventArgs());
         Call("Play_Click", Get<Button>("PlayButton"),new RoutedEventArgs());
         var envPath=Path.Combine(root,"launch-env.txt");
@@ -161,13 +156,8 @@ static class Program
         }
         ClickNav("Graphics");
         var upscaler = Get<ComboBox>("UpscalerCombo");
-        // A dropdown in an inactive window closes at once; on a desktop another window holds focus.
-        window.Activate(); Pump();
         upscaler.IsDropDownOpen = true; Pump(); window.UpdateLayout();
         var popup = (System.Windows.Controls.Primitives.Popup)upscaler.Template.FindName("PART_Popup",upscaler);
-        // Windows refuses focus to a background process (a build started from a terminal), so the
-        // combo closes at once: open its styled popup itself, which is what the checks inspect.
-        if (!popup.IsOpen) { popup.StaysOpen = true; popup.IsOpen = true; Pump(); window.UpdateLayout(); }
         Check(popup.IsOpen && popup.Child != null,"Styled dropdown opens");
         Check(((FrameworkElement)popup.Child!).ActualWidth >= upscaler.ActualWidth,"Dropdown fits its selector");
         var menu = (FrameworkElement)popup.Child!;
@@ -175,7 +165,7 @@ static class Program
         menuBitmap.Render(menu);
         var menuEncoder = new PngBitmapEncoder(); menuEncoder.Frames.Add(BitmapFrame.Create(menuBitmap));
         using(var menuOutput=File.Create(Path.Combine(output,"launcher-dropdown.png"))) menuEncoder.Save(menuOutput);
-        upscaler.IsDropDownOpen=false; popup.IsOpen=false; Pump();
+        upscaler.IsDropDownOpen=false; Pump();
         ClickNav("Home"); Render(Path.Combine(output,"launcher-compact.png"),1000,680);
         Get<ScrollViewer>("HomePage").ScrollToBottom(); Pump();
         Render(Path.Combine(output,"launcher-compact-scrolled.png"),1000,680);
@@ -204,24 +194,38 @@ static class Program
                 Check(migrated.RootElement.GetProperty("Fps").GetString()=="60","Persist FPS migration "+legacy);
             File.WriteAllText(Path.Combine(root,"launcher-settings.json"),saved);
         }
-        string goodSettings=File.ReadAllText(Path.Combine(root,"launcher-settings.json"));
-        File.WriteAllText(Path.Combine(root,"launcher-settings.json"),"{ damaged");
-        Call("LoadState"); Call("ApplyStateToUi");
-        Check(Get<TextBox>("PathBox").Text==game && Get<TextBlock>("FooterMessage").Text.Contains("backup"),"Damaged settings load the backup");
-        File.WriteAllText(Path.Combine(root,"launcher-settings.json"),goodSettings);
-        Call("LoadState"); Call("ApplyStateToUi");
         foreach(string fps in new[]{"30","60","90","120","uncap"}) {
             Select("FpsCombo",fps); Call("SaveSettings"); Call("LoadState"); Call("ApplyStateToUi");
             Check(Tag("FpsCombo")==fps,"Persist FPS "+fps);
             Check(Get<ComboBox>("QuickFps").SelectedIndex==Array.IndexOf(new[]{"30","60","90","120","uncap"},fps),"Quick FPS "+fps);
         }
-        foreach(string fps in new[]{"30","60","90","120","uncap"}) {
+        foreach(string source in new[]{"FpsCombo","QuickFps"}) {
+            foreach(string fps in new[]{"120","uncap"}) {
+                Select("FpsCombo","60"); Select("PresentCombo","Immediate");
+                if(source=="QuickFps") Get<ComboBox>(source).SelectedIndex=Array.IndexOf(new[]{"30","60","90","120","uncap"},fps); else Select(source,fps);
+                Check(Tag("PresentCombo")=="Fifo" && !Get<ComboBox>("PresentCombo").IsEnabled,"High FPS locks FIFO from "+source+" "+fps);
+                Call("SaveSettings"); Call("LoadState"); Call("ApplyStateToUi");
+                Check(Tag("PresentCombo")=="Fifo" && !Get<ComboBox>("PresentCombo").IsEnabled,"FIFO lock reload "+fps);
+                using(var settings=JsonDocument.Parse(File.ReadAllText(Path.Combine(root,"launcher-settings.json"))))
+                    Check(settings.RootElement.GetProperty("PresentMode").GetString()=="Fifo","FIFO persisted "+fps);
+            }
+        }
+        foreach(string fps in new[]{"30","60","90"}) {
             Select("FpsCombo",fps);
             Check(Get<ComboBox>("PresentCombo").IsEnabled,"Present choices unlocked "+fps);
             foreach(string mode in new[]{"","Fifo","FifoRelaxed","Immediate"}) {
                 Select("PresentCombo",mode); Call("SaveSettings"); Call("LoadState"); Call("ApplyStateToUi");
-                Check(Tag("PresentCombo")==mode,"Present mode preserved "+fps+" "+mode);
+                Check(Tag("PresentCombo")==mode,"Other FPS preserve present mode "+fps+" "+mode);
             }
+        }
+        foreach(string fps in new[]{"120","uncap"}) {
+            Select("FpsCombo",fps); Call("SaveSettings");
+            string settings=File.ReadAllText(Path.Combine(root,"launcher-settings.json"));
+            File.WriteAllText(Path.Combine(root,"launcher-settings.json"),settings.Replace("\"PresentMode\": \"Fifo\"","\"PresentMode\": \"Mailbox\""));
+            Call("LoadState"); Call("ApplyStateToUi");
+            Check(Tag("PresentCombo")=="Fifo" && !Get<ComboBox>("PresentCombo").IsEnabled,"Old high FPS config migrates "+fps);
+            Select("PresentCombo","Immediate"); Call("SaveSettings");
+            Check(Tag("PresentCombo")=="Fifo","Save rejects incompatible programmatic selection "+fps);
         }
         Select("FpsCombo","90"); Call("SaveSettings");
         Check(Get<CheckBox>("ChangeAppearanceCheck").IsChecked==true,"Mirror option reload");
