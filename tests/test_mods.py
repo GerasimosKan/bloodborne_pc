@@ -76,7 +76,13 @@ class ModTests(unittest.TestCase):
 
     def test_mod_symlinks_rejected(self):
         a = self.mod('A')
-        (a / 'dvdroot_ps4/escape').symlink_to(self.assets, target_is_directory=True)
+        link = a / 'dvdroot_ps4/escape'
+        try:
+            link.symlink_to(self.assets, target_is_directory=True)
+        except OSError as error:
+            if os.name != 'nt' or error.winerror != 1314: raise
+            import _winapi
+            _winapi.CreateJunction(str(self.assets), str(link))
         with self.assertRaises(ValueError):
             mods.build_overlay(self.game, self.root / 'out', [('A', a)])
 
@@ -94,6 +100,19 @@ class ModTests(unittest.TestCase):
         (self.moddir / 'Xml' / 'patches' / 'fov.xml').write_text('<Patch/>')
         (self.moddir / 'Empty').mkdir()
         self.assertEqual(mods.discover(self.moddir), ['Eboot', 'Xml'])
+
+    def test_bare_assets_with_executable_and_xml_are_all_preserved(self):
+        folder = self.moddir / 'Combined'
+        (folder / 'chr').mkdir(parents=True)
+        (folder / 'chr/a.dcx').write_bytes(b'combined')
+        (folder / 'eboot.bin').write_bytes(b'patch metadata')
+        (folder / 'xml').mkdir()
+        (folder / 'xml/change.xml').write_text('<Patch/>')
+        result = mods.build_overlay(self.game, self.root / 'out', [('Combined', folder)])
+        self.assertEqual((result / 'dvdroot_ps4/chr/a.dcx').read_bytes(), b'combined')
+        self.assertEqual((result / 'eboot.bin').read_bytes(), b'original executable')
+        self.assertFalse((result / 'dvdroot_ps4/eboot.bin').exists())
+        self.assertFalse((result / 'dvdroot_ps4/xml').exists())
 
     def test_system_module_replacement_rejected(self):
         a = self.mod('A')
@@ -151,6 +170,7 @@ class ModTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             mods.selected(self.moddir, config)
 
+    @unittest.skipIf(os.name == "nt", "Linux run.sh uses POSIX executable scripts; Windows uses run_windows.py")
     def test_run_uses_overlay_propagates_exit_and_cleans_view(self):
         self.mod('A')
         python = self.root / 'python'

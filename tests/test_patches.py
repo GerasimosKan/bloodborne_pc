@@ -167,7 +167,9 @@ class ExternalPatchTests(unittest.TestCase):
 def tiny_elf(code, vaddr=0x1000):
     """An ELF with one load segment holding `code` at `vaddr`."""
     header = bytearray(0x100)
-    header[:4] = b'\x7fELF'
+    header[:7] = b'\x7fELF\x02\x01\x01'
+    struct.pack_into('<H', header, 18, 62)
+    struct.pack_into('<H', header, 0x36, 56)
     struct.pack_into('<Q', header, 0x20, 0x40)
     struct.pack_into('<H', header, 0x38, 1)
     struct.pack_into('<IIQQQQQQ', header, 0x40, 1, 5, 0x100, vaddr, vaddr, len(code), len(code), 0x1000)
@@ -205,8 +207,33 @@ class ModEbootTests(unittest.TestCase):
             config = root / 'mods.json'
             config.write_text('{"disabled": ["B"]}')
             found, writes = patches.mod_patches(mods, config, '01.09', game, XML)
-            self.assertEqual(sorted({key.split('/')[0] for key, _, _ in found}), ['a.xml', 'loose.xml'])
+            self.assertEqual(sorted({key.split('/')[0] for key, _, _ in found}), ['mods'])
             self.assertEqual(writes, [(0x1000, b'\x90')])
+
+
+class ModPatchSafetyTests(unittest.TestCase):
+    def test_malformed_program_headers(self):
+        for data in (b"", b"\\x7fELF", tiny_elf(b"a")[:70]):
+            with self.assertRaises(ValueError): patches.eboot_mod_writes(tiny_elf(b"a"), data)
+
+    def test_no_load_segments_and_oversized_address(self):
+        bad=bytearray(tiny_elf(b"a"));struct.pack_into('<I',bad,0x40,0)
+        with self.assertRaises(ValueError): patches.memory_image(bytes(bad))
+        with self.assertRaises(ValueError): patches.memory_image(tiny_elf(b"a",vaddr=512*1024*1024))
+
+    def test_identical_filenames_have_distinct_mod_keys(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);game=root/'game';game.mkdir()
+            (game/'eboot.bin').write_bytes(tiny_elf(bytes(16)))
+            for name in ('A','B'):
+                folder=root/'mods'/name;folder.mkdir(parents=True)
+                (folder/'same.xml').write_text(EXTERNAL)
+            found,_=patches.mod_patches(root/'mods',None,'01.09',game,XML)
+            self.assertEqual(len({key for key,_,_ in found}),len(found))
+            self.assertEqual({key.split('/')[1] for key,_,_ in found},{'A','B'})
+            key=found[0][0];config=root/'patches.json'
+            config.write_text(__import__('json').dumps({'enabled':[key], 'disabled':[x[0] for x in found if x[0]!=key]}))
+            self.assertEqual([x[0] for x in patches.external_selection(found,config)],[key])
 
 
 class IntelTonemapTests(unittest.TestCase):

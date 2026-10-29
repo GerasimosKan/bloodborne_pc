@@ -4,7 +4,7 @@ name: Public Stability Windows Build
 on:
   workflow_dispatch:
   push:
-    branches: [public-stability-dlss-v1, public-performance-stability-v2, button-prompts, update-stability, update-performance-v2]
+    branches: [public-stability-dlss-v1, public-performance-stability-v2]
     paths:
       - "src/**"
       - "gpu/**"
@@ -21,6 +21,7 @@ permissions:
 
 jobs:
   build:
+    if: github.repository == 'DarkIzuku/bloodborne_pc'
     runs-on: windows-latest
     timeout-minutes: 90
 
@@ -83,7 +84,7 @@ jobs:
         shell: msys2 {0}
         run: |
           set -e
-          ninja -C out/gpu pipeline-cache-blob-test pipeline-archive-test motion-history-test motion-shader-test image-overlap-test runtime-gamepad-test settings-test ui-composition-test engine-hooks-test engine-menu-memory-test rebirth-refund-test pc-input-test widescreen-test button-prompts-test
+          ninja -C out/gpu pipeline-cache-blob-test pipeline-archive-test motion-history-test motion-shader-test image-overlap-test runtime-gamepad-test settings-test ui-composition-test engine-hooks-test engine-menu-memory-test rebirth-refund-test pc-input-test widescreen-test
           out/gpu/pipeline-cache-blob-test.exe
           out/gpu/pipeline-archive-test.exe
           out/gpu/motion-history-test.exe
@@ -99,7 +100,8 @@ jobs:
           ninja -C out/gpu frame-pacing-test
           ctest --test-dir out/gpu -R '^frame-pacing' --no-tests=error --output-on-failure
           out/gpu/widescreen-test.exe
-          out/gpu/button-prompts-test.exe
+          ninja -C out/gpu button-prompts-test button-prompt-runtime-test
+          ctest --test-dir out/gpu -R "^button-prompt" --no-tests=error --output-on-failure
 
       - name: Verify preparation, patches, and mod safety
         shell: msys2 {0}
@@ -111,6 +113,7 @@ jobs:
           python tests/prepare_cache_smoke.py
           python -m unittest discover -s tests -p 'test_prepare.py'
           python -m unittest discover -s tests -p 'test_patches.py'
+          python -m unittest discover -s tests -p 'test_mods.py'
           python -m unittest discover -s tests -p 'test_game_check.py'
           python -m unittest discover -s tests -p 'test_windows_frame_rate.py'
           python -m unittest discover -s tests -p 'test_high_frame_rate.py'
@@ -191,14 +194,10 @@ jobs:
           cp -f launcher-publish/BloodborneLauncher.exe package/
           cp -f run.bat build.sh setup.bat package/
           cp -f out/bb-probe.exe out/bb-gpu-capabilities.exe out/bb-engine-assets.exe package/out/
-          # Release: build.sh keeps debug info (RelWithDebInfo); the package gets it stripped.
-          llvm-strip --strip-debug package/out/bb-probe.exe package/out/bb-gpu-capabilities.exe package/out/bb-engine-assets.exe
           cp -f launcher-windows/BloodborneLauncher/Assets/bloodborne.ico package/out/
           test ! -f out/nvngx_dlss.dll || cp -f out/nvngx_dlss.dll package/out/
           cp -rf scripts/* package/scripts/
           test ! -d patches || cp -rf patches/* package/patches/
-          # Bundled file mods (Visual Upgrade Mod); the mod loader enables new folders by default.
-          test ! -d mods || cp -rf mods/. package/mods/
           test ! -d fsr4_shaders || cp -rf fsr4_shaders package/
           test ! -f LICENSE || cp -f LICENSE package/
           test ! -d licenses || cp -rf licenses package/

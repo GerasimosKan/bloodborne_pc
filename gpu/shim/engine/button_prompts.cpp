@@ -28,30 +28,7 @@
 #include "imstb_truetype.h"
 #pragma GCC diagnostic pop
 
-// The Xbox glyphs (third_party/button-prompts/README.md), embedded as the menu's font is.
-#ifdef _WIN32
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
-alignas(16) static const unsigned char bb_xbox_prompts[] = {
-#embed BB_PROMPTS_PATH
-};
-#pragma GCC diagnostic pop
-static const unsigned char* const bb_xbox_prompts_end = bb_xbox_prompts + sizeof(bb_xbox_prompts);
-#else
-asm(".section .rodata\n"
-    ".balign 16\n"
-    ".hidden bb_xbox_prompts\n"
-    ".global bb_xbox_prompts\n"
-    "bb_xbox_prompts:\n"
-    ".incbin \"" BB_PROMPTS_PATH "\"\n"
-    ".hidden bb_xbox_prompts_end\n"
-    ".global bb_xbox_prompts_end\n"
-    "bb_xbox_prompts_end:\n"
-    ".previous\n");
-extern "C" const unsigned char bb_xbox_prompts[];
-extern "C" const unsigned char bb_xbox_prompts_end[];
-#endif
-
+// Xbox labels are drawn here; no third-party or game textures are bundled.
 namespace BbPrompts {
 namespace {
 
@@ -134,10 +111,6 @@ bool g_font_ready = false;
 int CurrentMode() {
     const int mode = g_mode.load();
     return mode != kUnset ? mode : BbInput::Enabled() ? kKeyboard : kPlayStation;
-}
-
-bool XboxReady() {
-    return std::size_t(bb_xbox_prompts_end - bb_xbox_prompts) == kGlyphs * kGlyphSize + kSpots * kSpotBytes;
 }
 
 // --- Drawing: straight-alpha RGBA, Elden Ring's keycaps (dark face, light rim, white label) ---
@@ -332,28 +305,24 @@ void Build(int mode) {
     const std::uint64_t serial = host_bindings_serial();
     if (g_built_mode == mode && (mode != kKeyboard || g_built_serial == serial)) return;
     g_built_mode = mode, g_built_serial = serial;
-    if (mode == kXbox) {
-        for (int i = 0; i < kGlyphs; ++i)
-            g_glyphs[i].assign(bb_xbox_prompts + i * kGlyphSize, bb_xbox_prompts + (i + 1) * kGlyphSize);
-        for (int i = 0; i < kSpots; ++i) {
-            const unsigned char* spot = bb_xbox_prompts + kGlyphs * kGlyphSize + i * kSpotBytes;
-            g_spots[i].assign(spot, spot + kSpotBytes);
-        }
-        return;
-    }
     if (!g_font_ready) {
         const unsigned char* font = BbOverlay::FontData();
         g_font_ready = stbtt_InitFont(&g_font, font, stbtt_GetFontOffsetForIndex(font, 0)) != 0;
     }
     for (int i = 0; i < kGlyphs; ++i) {
         Canvas cv(32, 32);
-        Draw(cv, kGlyphFaces[i], 16, 16, 30);
+        static const char* const xbox[] = {"B", "LB", "LT", "L3", "LS", "↓", "← →", "↑", "↑ ↓",
+            "↑\n← ↓ →", "A", "RB", "RT", "R3", "RS", "X", "Y", "Menu", "View", "Menu"};
+        if (mode == kXbox) Key(cv, 16, 16, 30, xbox[i]);
+        else Draw(cv, kGlyphFaces[i], 16, 16, 30);
         g_glyphs[i].assign(kGlyphSize, 0);
         Encode(Rgba8(cv).data(), 32, 32, g_glyphs[i].data(), 0, 0, 8);
     }
     for (int i = 0; i < kSpots; ++i) {
         Canvas cv(kSpotW, kSpotH);
-        Draw(cv, kSpotFaces[i], kSpotW / 2.0f, kSpotH / 2.0f, 26);
+        static const char* const xbox[] = {"B", "A", "L3"};
+        if (mode == kXbox) Key(cv, kSpotW / 2.0f, kSpotH / 2.0f, 26, xbox[i]);
+        else Draw(cv, kSpotFaces[i], kSpotW / 2.0f, kSpotH / 2.0f, 26);
         g_spots[i] = Rgba8(cv);
     }
 }
@@ -370,7 +339,7 @@ void Invalidate() {
 int PadMode(SDL_JoystickID id) {
     switch (SDL_GetGamepadTypeForID(id)) {
     case SDL_GAMEPAD_TYPE_PS3: case SDL_GAMEPAD_TYPE_PS4: case SDL_GAMEPAD_TYPE_PS5: return kPlayStation;
-    default: return XboxReady() ? kXbox : kPlayStation;
+    default: return kXbox;
     }
 }
 
@@ -403,7 +372,12 @@ void Event(const SDL_Event& e) {
 
 const std::uint8_t* Replace(std::uint64_t address, std::uint64_t size) {
     if (size != kGlyphSize && size != kAtlasSize) return nullptr;
-    const auto* guest = reinterpret_cast<const std::uint8_t*>(address);
+    // Copy through the runtime's checked mapping path; a stale cache entry must not
+    // dereference an unmapped guest address. The result remains owned by this thread.
+    thread_local std::vector<std::uint8_t> result;
+    result.resize(size);
+    Core::Memory::Instance()->CopySparseMemory(address, result.data(), size);
+    const auto* guest = result.data();
     const std::uint64_t hash = XXH3_64bits(guest, size);
     int slot = -1;
     if (size == kAtlasSize && hash == kAtlasHash) slot = kGlyphs;
@@ -413,6 +387,8 @@ const std::uint8_t* Replace(std::uint64_t address, std::uint64_t size) {
 
     std::lock_guard lock{g_mutex};
     if (std::find(g_seen.begin(), g_seen.end(), std::pair{address, size}) == g_seen.end()) {
+        // Old resource addresses are harmless invalidations, but must not accumulate forever.
+        if (g_seen.size() >= 512) g_seen.erase(g_seen.begin());
         g_seen.emplace_back(address, size);
         if (g_seen.size() == 1)
             std::printf("Prompts: the game's button glyphs found, showing %s prompts\n", kModeNames[CurrentMode()]);
@@ -420,10 +396,14 @@ const std::uint8_t* Replace(std::uint64_t address, std::uint64_t size) {
     const int mode = CurrentMode();
     if (mode == kPlayStation) return nullptr;
     Build(mode);
-    if (slot < kGlyphs) return g_glyphs[slot].data();
+    if (slot < kGlyphs) {
+        result = g_glyphs[slot];
+        return result.data();
+    }
     g_atlas.assign(guest, guest + size);
     for (int i = 0; i < kSpots; ++i) Encode(g_spots[i].data(), kSpotW, kSpotH, g_atlas.data(), kSpotX[i], kSpotY, 1024 / 4);
-    return g_atlas.data();
+    result = g_atlas;
+    return result.data();
 }
 
 } // namespace BbPrompts

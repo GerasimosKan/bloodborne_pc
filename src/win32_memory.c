@@ -20,6 +20,8 @@ static VirtualAlloc2Fn virtual_alloc2;
 static MapViewOfFile3Fn map_view3;
 static UnmapViewOfFile2Fn unmap_view2;
 static HANDLE section;
+static uintptr_t backing_start;
+static uint64_t backing_size;
 static uintptr_t space_start, space_end;
 typedef struct { uintptr_t start, end; uint64_t phys; } View;
 static View *views;
@@ -55,12 +57,18 @@ int win_mem_section(uint64_t size, void **backing) {
     if (!section) { report("creating the memory pool section", 0, size); return -1; }
     *backing = MapViewOfFile(section, FILE_MAP_ALL_ACCESS, 0, 0, size);
     if (!*backing) { report("mapping the memory pool", 0, size); return -1; }
+    backing_start=(uintptr_t)*backing; backing_size=size;
     return 0;
 }
 /* Commits pool pages when the guest allocates them; every view of the section sees them.
  * Section pages cannot be decommitted, so a released range stays committed for reuse. */
 int win_mem_commit(void *at, uint64_t size) {
-    if (VirtualAlloc(at, size, MEM_COMMIT, PAGE_READWRITE)) return 0;
+    uintptr_t address=(uintptr_t)at;
+    if (!backing_start || !size || address<backing_start || address-backing_start>backing_size ||
+        size>backing_size-(address-backing_start)) {
+        SetLastError(ERROR_INVALID_ADDRESS); return -1;
+    }
+    if (VirtualAlloc(at, size, MEM_COMMIT, PAGE_READWRITE)==at) return 0;
     report("committing guest memory", (uintptr_t)at, (uintptr_t)at + size);
     fputs("Runtime: Windows has no memory left to commit: close other programs or enlarge the page file\n", stderr);
     return -1;

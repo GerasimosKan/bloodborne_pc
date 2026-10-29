@@ -208,7 +208,7 @@ def compile_patches(xml, names, app_version, segments):
 BLOODBORNE_IDS={'CUSA00207','CUSA00208','CUSA00900','CUSA01363','CUSA03173','CUSA03023'}
 
 
-def external_patches(directory, app_version='01.09', exclude=Path(__file__).resolve().parent.parent/'patches/Bloodborne.xml', pattern='*.xml'):
+def external_patches(directory, app_version='01.09', exclude=Path(__file__).resolve().parent.parent/'patches/Bloodborne.xml', pattern='*.xml', key_prefix=''):
     """[(key, file, metadata)] of eboot patches for this version in directory/*.xml.
     key is "<file name>/<patch name>" (the launcher's selection, patches.json)."""
     found=[]
@@ -224,7 +224,8 @@ def external_patches(directory, app_version='01.09', exclude=Path(__file__).reso
         if ids and not ids&BLOODBORNE_IDS: continue
         for meta in root.iter('Metadata'):
             if meta.get('AppVer')==app_version and meta.get('AppElf','eboot.bin')=='eboot.bin':
-                found.append((f'{path.name}/{meta.get("Name")}',path,meta))
+                relative=path.relative_to(directory).as_posix()
+                found.append((f'{key_prefix}{relative}/{meta.get("Name")}',path,meta))
     return found
 
 
@@ -263,25 +264,38 @@ LOAD_TYPES=(1,0x61000010)
 
 
 def memory_image(data):
-    """(loaded image, (vaddr, memsz, filesz) of each load segment) of a plaintext SELF or an ELF."""
+    """Only in-place changes to a bounded, nonoverlapping ELF64 x86-64 image."""
+    if len(data)>512*1024*1024:
+        raise ValueError('executable exceeds 512 MiB')
     if data[:4]==b'\x7fELF':
         elf=data
-        phoff,=struct.unpack_from('<Q',elf,0x20)
-        phnum,=struct.unpack_from('<H',elf,0x38)
-        ph=[dict(zip(('type','flags','offset','vaddr','paddr','filesz','memsz','align'),
-                     struct.unpack_from('<IIQQQQQQ',elf,phoff+i*56))) for i in range(phnum)]
     else:
         from prepare import parse_self
-        elf,_,ph,_,_=parse_self(data)
-    loads=[p for p in ph if p['type'] in LOAD_TYPES]
-    size=max(p['vaddr']+p['memsz'] for p in loads)
-    if size>512*1024*1024: raise ValueError('memory image exceeds 512 MiB')
-    image=bytearray(size)
-    for p in loads:
-        if p['filesz']>p['memsz'] or p['offset']+p['filesz']>len(elf):
+        elf,_,_,_,_=parse_self(data)
+    if len(elf)<64 or elf[:7]!=b'\x7fELF\x02\x01\x01':
+        raise ValueError('expected little-endian ELF64')
+    machine,=struct.unpack_from('<H',elf,18)
+    phoff,=struct.unpack_from('<Q',elf,0x20)
+    phsize,phnum=struct.unpack_from('<HH',elf,0x36)
+    if machine!=62 or phsize!=56 or not 1<=phnum<=128 or phoff+phnum*phsize>len(elf):
+        raise ValueError('invalid ELF program header table')
+    loads=[]
+    for i in range(phnum):
+        p=dict(zip(('type','flags','offset','vaddr','paddr','filesz','memsz','align'),
+                   struct.unpack_from('<IIQQQQQQ',elf,phoff+i*phsize)))
+        if p['type'] not in LOAD_TYPES: continue
+        if (p['filesz']>p['memsz'] or p['offset']+p['filesz']>len(elf) or
+            p['vaddr']+p['memsz']>512*1024*1024 or not p['memsz']):
             raise ValueError('truncated or invalid load segment')
+        loads.append(p)
+    if not loads: raise ValueError('no load segments')
+    loads.sort(key=lambda p:p['vaddr'])
+    if any(a['vaddr']+a['memsz']>b['vaddr'] for a,b in zip(loads,loads[1:])):
+        raise ValueError('overlapping load segments')
+    image=bytearray(max(p['vaddr']+p['memsz'] for p in loads))
+    for p in loads:
         image[p['vaddr']:p['vaddr']+p['filesz']]=elf[p['offset']:p['offset']+p['filesz']]
-    return image,[(p['vaddr'],p['memsz'],p['filesz']) for p in loads]
+    return image,[(p['vaddr'],p['memsz'],p['filesz'],p['flags']) for p in loads]
 
 
 # A byte-patched eboot differs in a few places; more means another version or a rebuilt executable.
@@ -294,7 +308,7 @@ def eboot_mod_writes(original, modified, chunk=1<<16):
     try:
         base,base_loads=memory_image(original)
         mod,mod_loads=memory_image(modified)
-    except (ValueError,struct.error) as error:
+    except (ValueError,struct.error,IndexError) as error:
         raise ValueError(f'not a plaintext PS4 executable ({error})')
     if mod_loads!=base_loads:
         raise ValueError('segment layout differs from the 1.09 eboot.bin (another version, or added code)')
@@ -312,7 +326,7 @@ def eboot_mod_writes(original, modified, chunk=1<<16):
             # A run continues into the next chunk as a separate write; the loader applies both.
             writes.append((start+i,bytes(b[i:j])))
             total+=j-i
-            if total>EBOOT_MOD_LIMIT:
+            if total>EBOOT_MOD_LIMIT or len(writes)>65536:
                 raise ValueError('changes too much of the executable to be a 1.09 patch')
             i=j
     return writes
@@ -322,15 +336,18 @@ def mod_patches(mods_dir, mods_config, app_version, game, exclude):
     """(patch XML entries, writes) from the enabled mods: their *.xml files (any depth), loose
     *.xml files in the mods folder, and a modified eboot.bin (eboot_mod_writes)."""
     from mods import child, content_root, selected
-    found=external_patches(mods_dir,app_version,exclude)
+    found=external_patches(mods_dir,app_version,exclude,key_prefix='mods/')
     writes=[]
     for name in selected(mods_dir,mods_config):
         folder=Path(mods_dir)/name
-        found+=external_patches(folder,app_version,exclude,'**/*.xml')
+        found+=external_patches(folder,app_version,exclude,'**/*.xml',f'mods/{name}/')
         eboot=child(content_root(folder)[0],'eboot.bin')
         if eboot.is_file():
             try:
-                ours=eboot_mod_writes((Path(game)/'eboot.bin').read_bytes(),eboot.read_bytes())
+                original=Path(game)/'eboot.bin'
+                if max(original.stat().st_size,eboot.stat().st_size)>512*1024*1024:
+                    raise ValueError('executable exceeds 512 MiB')
+                ours=eboot_mod_writes(original.read_bytes(),eboot.read_bytes())
             except ValueError as error:
                 raise ValueError(f'mod {name}: eboot.bin: {error}')
             print(f'Patches: mod {name} eboot.bin ({len(ours)} writes, {sum(len(d) for _,d in ours)} bytes)')
