@@ -6,7 +6,7 @@
 #   .\launcher-windows\build-launcher.ps1                                    build + zip
 #   .\launcher-windows\build-launcher.ps1 -InstallDir D:\Bloodborne          also upgrade that install
 #   -NoZip: no zip   -SkipRuntime: reuse the runtime in out\   -SkipTests: skip the launcher tests
-#   -Version 0.8: the zip's version (default: the last git tag's number)
+#   -Version 0.8: the zip's version (default: one more than the last tag or package, see Packaging)
 #
 # Everything comes from the repository build. An install provides what the repository does not
 # have: tools\python, fsr4_shaders and out\nvngx_dlss.dll. That is -AssetsDir, else -InstallDir,
@@ -128,10 +128,13 @@ if ($InstallDir) {
 
 if (-not $NoZip) {
     Write-Host '== Packaging'
-    # -Version, else the number of the last tag in this branch's history, e.g. v0.4.1 from v0.4.1-stability.4.
+    # -Version, else the last packaged version (dist\version.txt, 0.7 before the first) with its last
+    # number raised by one: 0.7 -> 0.8 -> 0.9 -> 0.10. Not git tags: 0.51 there sorts above 0.7.
+    $versionFile = Join-Path $dist 'version.txt'
     if (-not $Version) {
-        $Version = git -C $repo describe --tags --abbrev=0 2>$null
-        $Version = if ($Version -match '^v?\d+(\.\d+)*') { $Matches[0] } else { Get-Date -Format 'yyyy-MM-dd' }
+        $last = (Get-Content $versionFile -ErrorAction SilentlyContinue | Select-Object -First 1)
+        if ($last -notmatch '^\d+(\.\d+)*$') { $last = '0.7' }
+        $parts = $last.Split('.'); $parts[-1] = [int]$parts[-1] + 1; $Version = $parts -join '.'
     }
     $stage = Join-Path ([IO.Path]::GetTempPath()) "bbpc-package-$([Guid]::NewGuid().ToString('N'))"
     $pkg = Join-Path $stage 'Bloodborne-PC'
@@ -149,6 +152,7 @@ if (-not $NoZip) {
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         [IO.Compression.ZipFile]::CreateFromDirectory($stage, $zipPath, [IO.Compression.CompressionLevel]::Optimal, $false)
         Write-Host ("Packaged {0} ({1:N0} MB)" -f $zipPath, ((Get-Item $zipPath).Length / 1MB))
+        Set-Content $versionFile $Version  # the next build counts up from this one
     }
     finally { Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue }
 }
