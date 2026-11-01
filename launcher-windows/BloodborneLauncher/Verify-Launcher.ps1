@@ -292,6 +292,11 @@ static class Program
         typeof(MainWindow).GetField("modsDir",BindingFlags.Instance|BindingFlags.NonPublic)!.SetValue(window,fixtureMods);
         var patchKeys=(System.Collections.IList)typeof(MainWindow).GetMethod("PatchesIn",BindingFlags.Instance|BindingFlags.NonPublic)!.Invoke(window,new object[]{Path.Combine(fixtureMods,"B"),SearchOption.AllDirectories})!;
         Check(((ValueTuple<string,string,bool>)patchKeys[0]!).Item1=="mods/B/same.xml/Example","Mod patch keys match patches.py");
+        Check(Get<Button>("UpdateButton").Visibility==Visibility.Collapsed,"Updater stays offline outside a portable install");
+        var expectedSha=typeof(MainWindow).GetMethod("ExpectedSha256",BindingFlags.Static|BindingFlags.NonPublic)!;
+        string sums="aa11  other.zip\r\nBB22 *Pkg-Windows-x64.zip\n";
+        Check((string?)expectedSha.Invoke(null,new object[]{sums,"Pkg-Windows-x64.zip"})=="BB22","Checksum line found (binary-mode '*', CRLF)");
+        Check(expectedSha.Invoke(null,new object[]{sums,"missing.zip"})==null,"Missing checksum refuses the update");
         Console.WriteLine($"PASS: {assertions} assertions; settings, navigation, all quick options, launch environment and artwork.");
         window.Close(); app.Shutdown();
     }
