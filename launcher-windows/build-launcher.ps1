@@ -152,6 +152,10 @@ if (-not $NoZip) {
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         [IO.Compression.ZipFile]::CreateFromDirectory($stage, $zipPath, [IO.Compression.CompressionLevel]::Optimal, $false)
         Write-Host ("Packaged {0} ({1:N0} MB)" -f $zipPath, ((Get-Item $zipPath).Length / 1MB))
+        # Uploaded with the zip: the launcher's updater refuses a zip without it (sha256sum format, no BOM).
+        $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
+        [IO.File]::WriteAllText((Join-Path $dist 'SHA256SUMS'), "$hash  $(Split-Path $zipPath -Leaf)`n")
+        Write-Host "Release v$Version on GitHub: upload $zipPath and $dist\SHA256SUMS"
         Set-Content $versionFile $Version  # the next build counts up from this one
     }
     finally { Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue }
