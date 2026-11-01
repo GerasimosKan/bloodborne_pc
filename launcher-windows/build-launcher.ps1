@@ -6,12 +6,13 @@
 #   .\launcher-windows\build-launcher.ps1                                    build + zip
 #   .\launcher-windows\build-launcher.ps1 -InstallDir D:\Bloodborne          also upgrade that install
 #   -NoZip: no zip   -SkipRuntime: reuse the runtime in out\   -SkipTests: skip the launcher tests
+#   -Version 0.8: the zip's version (default: the last git tag's number)
 #
 # Everything comes from the repository build. An install provides what the repository does not
 # have: tools\python, fsr4_shaders and out\nvngx_dlss.dll. That is -AssetsDir, else -InstallDir,
 # else the folder used last time (dist\assets-dir.txt).
 # Without arguments (e.g. from build-launcher.bat) it asks for the install folder.
-param([string]$InstallDir, [string]$AssetsDir, [switch]$NoZip, [switch]$SkipTests, [switch]$SkipRuntime)
+param([string]$InstallDir, [string]$AssetsDir, [string]$Version, [switch]$NoZip, [switch]$SkipTests, [switch]$SkipRuntime)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $project = Join-Path $PSScriptRoot 'BloodborneLauncher\BloodborneLauncher.csproj'
@@ -127,9 +128,11 @@ if ($InstallDir) {
 
 if (-not $NoZip) {
     Write-Host '== Packaging'
-    # The number of the last tag, e.g. v0.4.1 from v0.4.1-stability.4.
-    $version = git -C $repo describe --tags --abbrev=0 2>$null
-    $version = if ($version -match '^v?\d+(\.\d+)*') { $Matches[0] } else { Get-Date -Format 'yyyy-MM-dd' }
+    # -Version, else the number of the last tag in this branch's history, e.g. v0.4.1 from v0.4.1-stability.4.
+    if (-not $Version) {
+        $Version = git -C $repo describe --tags --abbrev=0 2>$null
+        $Version = if ($Version -match '^v?\d+(\.\d+)*') { $Matches[0] } else { Get-Date -Format 'yyyy-MM-dd' }
+    }
     $stage = Join-Path ([IO.Path]::GetTempPath()) "bbpc-package-$([Guid]::NewGuid().ToString('N'))"
     $pkg = Join-Path $stage 'Bloodborne-PC'
     try {
