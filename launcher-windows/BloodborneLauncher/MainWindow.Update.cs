@@ -72,6 +72,7 @@ public partial class MainWindow
         string zip = Path.Combine(Path.GetTempPath(), $"BloodborneLauncher-update-{Guid.NewGuid():N}.zip");
         string old = exe + ".old";
         bool moved = false;
+        var restart = new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = root }; // loaded before the exe is renamed
         UpdateButton.IsEnabled = false;
         try
         {
@@ -102,9 +103,13 @@ public partial class MainWindow
                 throw new IOException("Checksum mismatch: the download is corrupt. Nothing was changed.");
 
             UpdateButton.Content = "Installing…";
-            File.Move(exe, old, true); // Windows lets a running exe be renamed, not overwritten
-            moved = true;
-            await Task.Run(() => ZipFile.ExtractToDirectory(zip, root, overwriteFiles: true)); // rejects entries escaping root
+            // Open the archive before renaming: a single-file launcher loads ZipFile from its own exe on first use.
+            using (var archive = ZipFile.OpenRead(zip))
+            {
+                File.Move(exe, old, true); // Windows lets a running exe be renamed, not overwritten
+                moved = true;
+                await Task.Run(() => archive.ExtractToDirectory(root, overwriteFiles: true)); // rejects entries escaping root
+            }
             File.WriteAllText(ReleaseTagFile, updateTag);
         }
         catch (Exception ex)
@@ -119,7 +124,7 @@ public partial class MainWindow
         }
         finally { try { File.Delete(zip); } catch { } }
 
-        try { Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = root }); }
+        try { Process.Start(restart); }
         catch { MessageBox.Show(this, $"{updateTag} is installed. Start the launcher again to use it.", "Update"); }
         Application.Current.Shutdown();
     }
