@@ -92,8 +92,10 @@ foreach ($exe in $runtimeExes) { if (-not (Test-Path "$repo\out\$exe")) { throw 
 # The MSYS2 DLLs the runtime programs load, as in CI (windows-offline-build.yml).
 # Filtered here, not with a bash pipeline: its xargs hangs in VS Code's PowerShell Extension terminal.
 $runtimeDlls = Invoke-Msys ('for e in ' + (($runtimeExes | ForEach-Object { "out/$_" }) -join ' ') + '; do ldd "$e"; done') |
-    Select-String '/clang64/bin/([^/\s]+\.dll)' | ForEach-Object { "C:\msys64\clang64\bin\$($_.Matches[0].Groups[1].Value)" } |
-    Sort-Object -Unique
+    # Match by name, not resolved path: ldd resolves a DLL this PC also has in System32 (e.g. xvidcore.dll
+    # from an Xvid codec install) there, and the package then lacks it. vulkan-1.dll comes from the GPU driver.
+    Select-String '^\s*(\S+\.dll) =>' | ForEach-Object { "C:\msys64\clang64\bin\$($_.Matches[0].Groups[1].Value)" } |
+    Where-Object { (Test-Path $_) -and (Split-Path $_ -Leaf) -ne 'vulkan-1.dll' } | Sort-Object -Unique
 
 if (-not $SkipTests) {
     Write-Host '== Testing the launcher'
