@@ -98,6 +98,13 @@ public partial class MainWindow : Window
         ["is_primary"] = (", основной", ", primary"),
         ["first_pad"] = ("Авто (первый подключённый)", "Auto (the first connected)"),
         ["not_connected"] = ("{0} (не подключён)", "{0} (not connected)"),
+        ["update_available"] = ("Обновить до {0}", "Update to {0}"),
+        ["update_title"] = ("Обновление", "Update"),
+        ["update_close_game"] = ("Закройте игру перед обновлением.", "Close the game before updating."),
+        ["update_confirm"] = ("Скачать и установить {0} с github.com/{1}?\n\nФайлы порта и лаунчера заменятся. Настройки, bbport.ini, моды, сохранения и игра останутся. Лаунчер перезапустится.",
+                              "Download and install {0} from github.com/{1}?\n\nThe port and launcher files are replaced. Your settings, bbport.ini, mods, saves and the game are kept. The launcher restarts."),
+        ["update_failed"] = ("Обновление не удалось: {0}\n\nЧасть файлов могла обновиться. Нажмите кнопку обновления ещё раз.",
+                             "Update failed: {0}\n\nSome files may already be new. Press the update button again to finish."),
     };
 
     public MainWindow()
@@ -108,6 +115,7 @@ public partial class MainWindow : Window
         ApplyLanguage();
         Closing += (_, _) => store.Save();
         SourceInitialized += (_, _) => DarkTitleBar();
+        CheckForUpdate();
     }
 
     [DllImport("dwmapi.dll")]

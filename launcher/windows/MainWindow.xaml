@@ -44,6 +44,7 @@
         <StackPanel VerticalAlignment="Center">
           <TextBlock Text="Bloodborne" FontSize="18" FontWeight="SemiBold" />
           <TextBlock x:Name="VersionText" FontSize="12" Opacity="0.65" />
+          <Button x:Name="UpdateButton" Visibility="Collapsed" Click="Update_Click" Margin="0,4,0,0" Padding="8,2" FontSize="12" />
         </StackPanel>
       </StackPanel>
       <StackPanel DockPanel.Dock="Bottom" Margin="6,8,6,4">
