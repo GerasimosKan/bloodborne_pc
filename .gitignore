@@ -37,3 +37,4 @@ patches.json
 /mods/
 /graphify-out/
 /.vscode/
+!docs/images/*.png

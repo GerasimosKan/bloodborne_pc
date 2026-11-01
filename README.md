@@ -1,153 +1,223 @@
-# Bloodborne PC — DarkIzuku's Windows fork
+# Bloodborne PC
 
-A native Windows port of **Bloodborne**, with a WPF launcher, Vulkan rendering,
-DLSS model selection, FSR upscaling, keyboard/mouse controls, ultrawide output
-and focused stability improvements.
+A native Windows port of **Bloodborne** with its own launcher. It renders with
+Vulkan and supports DLSS, FSR, keyboard and mouse, gamepads, ultrawide screens,
+file mods and online play through a shadNet server.
 
-[Download the latest Windows release](https://github.com/DarkIzuku/bloodborne_pc/releases/latest)
-· [Windows builds](https://github.com/DarkIzuku/bloodborne_pc/actions/workflows/windows-offline-build.yml)
-· [Source branch](https://github.com/DarkIzuku/bloodborne_pc/tree/public-performance-stability-v2)
+**[Download the latest release](https://github.com/GerasimosKan/bloodborne_pc/releases/latest)**
 
-Based on [deadinside28's bbport](https://github.com/deadinside28/bloodborne_pc).
-The game's x86-64 code runs directly on the CPU. The runtime replaces PS4 system
-libraries, and a renderer derived from shadPS4 translates graphics to Vulkan.
-This is an independent fork, not an official Sony, FromSoftware or shadPS4 release.
+![The launcher's Play page](docs/images/launcher-play.png)
 
-**No game files, firmware or saved games are included.** You need your own
-compatible Bloodborne 1.09 dump. The port is experimental; automated tests do
-not establish that every area, mod or hardware configuration works.
+This is GerasimosKan's fork of
+[DarkIzuku's fork](https://github.com/DarkIzuku/bloodborne_pc), which is based on
+[deadinside28's bbport](https://github.com/deadinside28/bloodborne_pc). The
+game's x86-64 code runs directly on the CPU. The runtime replaces the PS4 system
+libraries, and a renderer derived from shadPS4 translates the graphics to Vulkan.
+It is not an official Sony, FromSoftware or shadPS4 release.
 
-## Getting started
+> **No game files are included.** No game data, firmware or saves come with this
+> project. You need your own dump of Bloodborne version **1.09**. The launcher
+> does not download game files and does not decrypt encrypted dumps.
 
-1. Download the Windows ZIP from **Releases** and extract the complete package
-   into a writable folder. Keep its subfolders and DLLs together.
-2. Open **BloodborneLauncher.exe** and select your Bloodborne game folder.
-3. Choose display, graphics and control settings, save them and press **Play**.
+The port is experimental. Not every area, mod or hardware setup has been tested.
 
-The launcher validates the installation and automatically prepares the executable,
-PC menus and selected mods. Only one game-folder selection is needed; there is
-no separate executable picker. The dump must already have files in a supported
-format: the launcher does not decrypt encrypted dumps or download game files.
+## For players
 
-The launcher hides while the game runs and returns when the game process exits.
-Normal play does not require a persistent command window.
+### What you need
 
-**Inicio rápido:** descarga y extrae el paquete completo, abre
-`BloodborneLauncher.exe`, selecciona la carpeta de Bloodborne 1.09, guarda tus
-opciones y pulsa **Play**. No hace falta compilar para utilizar una release.
+- Windows 10 (version 1803 or newer) or Windows 11, on an x86-64 CPU.
+- A graphics card and driver with Vulkan 1.3. DLSS and FSR 4 have their own
+  hardware requirements.
+- Your own Bloodborne 1.09 dump, with its required modules.
+- Enough RAM, page-file space and disk space for the game and its caches.
 
-## Requirements
+You do not need to install anything else. The release contains the launcher with
+its .NET runtime, a Python runtime for preparing the game, and the other
+libraries it needs.
 
-- Windows 10 version 1803 or newer, or Windows 11; x86-64 CPU.
-- Vulkan 1.3 capable GPU and compatible drivers; upscaler requirements vary.
-- Your own supported Bloodborne 1.09 dump, including its required modules.
-- Enough RAM, page-file space and storage for the game and local caches.
+### Download and first run
 
-The portable release includes the launcher and its .NET runtime, Python for
-local preparation, and redistributable dependencies. Development tools are only
-needed when compiling from source.
+1. Open the [latest release](https://github.com/GerasimosKan/bloodborne_pc/releases/latest)
+   and download `UPDATE.<version>-Bloodborne-PC.zip`.
+2. Optional: check the download against the `SHA256SUMS` file from the same
+   release. In PowerShell, `Get-FileHash <zip>` must print the same hash.
+3. Extract the whole zip into a folder you can write to, for example
+   `D:\Bloodborne`. Keep all subfolders and DLLs together.
+4. Start **BloodborneLauncher.exe**.
+5. On the **Play** page, click the folder button next to **Game path** and pick
+   your Bloodborne folder. **Game version** shows `1.09` when the dump is valid.
+6. Pick your settings and press **PLAY BLOODBORNE**. Settings are saved when you
+   press Play.
 
-## Features
+The launcher checks the game folder and prepares the executable, the PC menus
+and your enabled mods on its own. You only choose the game folder once. The
+launcher hides while the game runs and comes back when you quit.
 
-- **WPF launcher:** persistent display, graphics, controls, camera, mods, online
-  and diagnostic settings, with Bloodborne artwork and theme.
-- **Native PC menus:** shared engine graphics/camera settings, FOV, keyboard
-  bindings and local trophies, where supported by the validated 1.09 profile.
-- **Display:** windowed/fullscreen output, 1080p/1440p/4K, 21:9 and 32:9
-  ultrawide, centered UI and corrected camera projection.
-- **Frame rate:** 30, 60, 90, 120 FPS and Unlimited. The title menu remains
-  capped at 60 FPS. 120 FPS and Unlimited require FIFO VSync; Unlimited follows
-  the display refresh limit with VSync. Hardware limits can reduce actual FPS.
-- **DLSS Super Resolution / DLAA:** quality modes and independent NGX model
-  hints (`Auto`, `A`–`F`, `J`, `K`, `L`, `M`). The installed NVIDIA DLL determines
-  availability and can map older hints to newer models.
-- **FSR 3.1, FSR 4, FSR 4.1.1 and native TAA:** temporal reconstruction, camera
-  and object motion vectors, sharpening and native-resolution HUD composition.
-  FSR 4 requires compatible Vulkan features/assets. FSR 4.1.1 assets must be
-  generated locally from a compatible AMD DLL supplied by the user.
-- **Controls:** remappable keyboard/mouse, native mouse camera, menu pointer
-  and SDL gamepads. Recognized button textures show procedural keyboard/mouse
-  or Xbox labels; PlayStation controllers retain the original glyphs. Mods
-  replacing those textures keep their own prompts.
-- **Gameplay options:** Hunter's Dream appearance editing, Altar of Despair
-  respec, skip intro, free camera and debug options where supported. Debug menu
-  fonts are not bundled and must be provided separately.
-- **Mods and patches:** loose-file overlays, per-mod/per-patch switches, XML
-  patches and bounded in-place executable-mod patches.
-- **Diagnostics:** timestamped session logs, optional Detailed Logs/frame
-  statistics, bounded crash dumps and an **Open Logs Folder** button.
+### Updating
 
-Frame Generation is not enabled by these changes.
+The launcher updates itself. When a newer release is out, a button appears under
+**PLAY BLOODBORNE**, for example `Update v0.8 → v0.9`. Click it and confirm.
 
-## Settings, saves and mods
+![The update button while it downloads](docs/images/launcher-update-downloading.png)
 
-`bbport.ini` stores runtime graphics/engine settings; `launcher-settings.json`
-stores frontend preferences. Unrelated INI entries are preserved. Settings writes
-use replacement files and retain the previous copy as `.bak`.
+The launcher then:
 
-Saves normally live under `user/` in the selected data directory. Keep a separate
-backup before changing runtimes or installing third-party mods. Updating a release
-does not require deleting saves or existing configuration.
+1. downloads the new zip,
+2. checks it against the release's `SHA256SUMS` and stops if they do not match,
+3. installs it over your current folder,
+4. restarts itself.
 
-Put loose-file mods in separate folders under `mods/`. The loader supports
-`dvdroot_ps4/`, common wrappers and bare game asset folders. Later mods in the
-configured order override earlier files; originals are preserved.
+Your `bbport.ini`, `launcher-settings.json`, `mods` folder and game dump are
+kept. Files you edited inside `patches\` or `scripts\` are replaced. Close the
+game before you update.
 
-Enabled mods may contain XML patches or a modified `eboot.bin`. Executable mods
-are converted into bounded writes against a matching layout and never replace
-the original executable. Invalid/truncated layouts and system-module replacement
-are rejected. Third-party patches can still conflict with one another.
+If the update fails partway, press the update button again to finish it. If
+you have no internet connection, the launcher skips the check and works as
+usual. You can also update by hand: download the new zip and extract it over
+your folder.
 
-Online server addresses and accounts are user-configured; no server IP or account
-is supplied by default. Trophies are stored locally, not uploaded as platform achievements.
+### What you can set
 
-## Stability and startup
+![Graphics page](docs/images/launcher-graphics.png)
 
-This fork retains fixes for large Vulkan recording payloads, command lifetime,
-texture overlap/writeback, loading-screen item icons, pipeline/shader caches,
-Intel CPU compatibility and crash diagnostics.
+- **Display:** windowed or borderless fullscreen, 720p to 4K, and ultrawide
+  resolutions (21:9 and 32:9, up to 5120x2160) with corrected camera and HUD
+  proportions.
+- **Upscaling:** DLSS Super Resolution and DLAA with a DLSS model preset,
+  FSR 3.1, FSR 4, FSR 4.1.1, or native TAA, with optional RCAS sharpening.
+  - DLSS needs an NVIDIA card. The installed NVIDIA DLL decides which models
+    are available.
+  - FSR 4 needs compatible Vulkan features and its shader assets.
+  - FSR 4.1.1 assets are not shipped. You build them on your own PC from a
+    compatible AMD DLL that you supply.
+- **Effects:** turn chromatic aberration, depth of field, motion blur, SSAO,
+  dynamic shadows, SSR reflections and the game's anti-aliasing on or off. You
+  can also skip the intro videos.
+- **Frame rate:** 30, 60, 90, 120 FPS or Unlimited, plus a model-detail setting
+  and an optional FPS counter. The title menu stays at 60 FPS. 120 FPS and
+  Unlimited need FIFO (VSync) as the present mode. Your hardware may not reach the limit you pick.
+- **Controls:** remappable keyboard and mouse, mouse camera, mouse menu
+  selection, and SDL gamepads (you can pick which gamepad is active). Button
+  prompts show keyboard/mouse or Xbox labels; PlayStation controllers keep the
+  original glyphs.
+- **In-game PC menus:** graphics and camera settings, FOV, key bindings and local
+  trophies.
+- **Gameplay options:** edit your appearance at the Hunter's Dream mirror, and
+  reset attributes at the Altar of Despair.
+- **Diagnostics:** every session writes a log. Detailed logs are optional, and
+  **Open Logs Folder** takes you to them.
 
-The Windows shared guest memory pool reserves its address range and commits
-pages when allocated, reducing the initial system commit charge. Released section
-pages remain committed for reuse; this is not a VRAM decommit feature.
+![Performance page](docs/images/launcher-performance.png)
 
-The executable cache verifies input/output hashes. Mod content, native menu
-assets and selected patches are still processed at launch. Startup improvements
-are not claims of higher gameplay FPS.
+### Mods
 
-See [stability notes](docs/PUBLIC_STABILITY.md), [mods](docs/MODS.md) and
-[frame pacing](docs/FRAME_PACING_WINDOWS.md).
+![Mods page](docs/images/launcher-mods.png)
 
-## Building and testing
+Put each mod in its own folder inside `mods\`, then turn on **Enable mods** on
+the **Mods** page. Each mod and each patch has its own switch, so you can turn
+them on and off one at a time. Changes apply the next time you start the game.
 
-Windows development uses **MSYS2 CLANG64** (Clang, libc++, LLD, CMake/Ninja,
-SDL3, Vulkan and the libraries listed in the workflow), plus **.NET 8** for WPF.
-Clone with submodules; GitHub's source ZIP does not include them.
+- The loader accepts mods with a `dvdroot_ps4\` folder, common wrapper folders,
+  or bare game folders such as `chr\` or `parts\`. Unpack ZIP and 7z archives
+  first.
+- When two mods replace the same file, the one later in the load order wins.
+- Your original game files are never overwritten.
+- Mods may include XML patches or a modified `eboot.bin`. A modified `eboot.bin`
+  is turned into small checked patches against a matching executable; it never
+  replaces the original. Mods that replace system modules are rejected.
+- Third-party mods can still conflict with each other.
+
+More detail (in Russian): [docs/MODS.md](docs/MODS.md).
+
+### Online
+
+Online play uses a shadNet server that you choose. No server or account is set
+by default. On the **Online** page, turn on online play and enter the server's
+host, TCP port and WebAPI URL. Then log in with an account from that server's
+website. You can let Windows remember the account; passwords are never written
+to `bbport.ini` or `launcher-settings.json`.
+
+Trophies are stored locally only. See [docs/online.md](docs/online.md) for the
+full setup.
+
+### Settings and saves
+
+- `bbport.ini` holds the game and graphics settings.
+- `launcher-settings.json` holds the launcher's own settings.
+- When the launcher writes a settings file, it keeps the previous one as `.bak`.
+- Saves are usually in `user\` inside the data folder. Back them up before you
+  install third-party mods or switch to a different build.
+
+## For developers
+
+### Build from source
+
+You need **MSYS2 CLANG64** (Clang, libc++, LLD, CMake, Ninja, SDL3, Vulkan and the
+libraries listed in the Windows workflow) and the **.NET 8 SDK**. Clone with
+submodules; GitHub's source ZIP does not include them.
 
 ```sh
-git clone --recursive --branch public-performance-stability-v2 https://github.com/DarkIzuku/bloodborne_pc.git
+git clone --recursive https://github.com/GerasimosKan/bloodborne_pc.git
 cd bloodborne_pc
 bash build.sh
 ```
 
-Run the build in CLANG64. Exact dependencies, test targets, launcher publishing
-and portable packaging are defined by [the Windows workflow](.github/workflows/windows-offline-build.yml).
-Prebuilt releases are recommended for players.
+Run `build.sh` in a CLANG64 shell. The exact dependencies and test targets are in
+[the Windows workflow](.github/workflows/windows-offline-build.yml).
 
-CI checks C++ regressions, frame pacing, preparation/patch safety, synthetic
-crash capture and launcher settings/lifecycle. Gameplay, visual quality and
-driver-specific behavior require additional runtime testing.
+### Build the launcher and a release package
 
-## Credits and licensing
+From PowerShell in the repository folder:
 
-Thanks to **deadinside28** for bbport, **shadPS4** and its contributors for the
-renderer foundation, **droogie/bbhost** for engine/controls/menu work,
-**AwesomeObserver**, **Awakenchan**, **Supermedo** and contributors for focused
-stability research, and **Gerasimos Kanellatos (GerasimosKan)** for trophies,
-menus, prompts, mods and Windows tooling.
+```powershell
+.\launcher-windows\build-launcher.ps1                                # runtime + launcher + zip
+.\launcher-windows\build-launcher.ps1 -InstallDir D:\Bloodborne      # also upgrade that install
+.\launcher-windows\build-launcher.ps1 -Version 0.9                   # set the version
+```
 
-Adaptation details and third-party notices are retained in [licenses/](licenses).
-Existing code retains its original notices, including GPL-2.0-or-later code;
-adaptations using its later-version grant are identified as GPL-3.0-or-later.
-See [LICENSE](LICENSE) and individual source headers. NVIDIA/AMD components
-and other dependencies retain their own terms.
+Other switches: `-NoZip`, `-SkipRuntime` (reuse the runtime in `out\`) and
+`-SkipTests`. The script needs `tools\python`, `fsr4_shaders` and
+`out\nvngx_dlss.dll` from an existing install, given once with `-AssetsDir` or
+`-InstallDir`.
+
+It writes `dist\UPDATE.<version>-Bloodborne-PC.zip` and `dist\SHA256SUMS`.
+Without `-Version`, the version is one more than the last package
+(0.8, 0.9, 0.10 …).
+
+To publish a release, create a GitHub release tagged `v<version>` (for example
+`v0.9`) and upload both files. The launcher's updater only offers a release
+whose tag is a plain version number higher than the installed one, and only when
+both the zip and `SHA256SUMS` are attached.
+
+### Tests
+
+CI checks C++ regressions, frame pacing, preparation and patch safety, crash
+capture, and launcher settings and lifecycle. Gameplay, image quality and
+driver-specific behavior still need testing by hand.
+
+### Further reading
+
+- [Stability notes](docs/PUBLIC_STABILITY.md)
+- [Frame pacing on Windows](docs/FRAME_PACING_WINDOWS.md)
+- [Upscalers](docs/upscaler.md)
+- [Online](docs/online.md)
+- [Mods](docs/MODS.md)
+
+## Credits
+
+Thanks to **deadinside28** for bbport; **shadPS4** and its contributors for the
+renderer foundation; **droogie/bbhost** for engine, controls and menu work;
+**DarkIzuku** for the Windows fork this one builds on; **AwesomeObserver**,
+**Awakenchan**, **Supermedo** and other contributors for stability research; and
+**Gerasimos Kanellatos (GerasimosKan)** for trophies, menus, prompts, mods, the
+updater and Windows tooling.
+
+## License
+
+Existing code keeps its original notices, including GPL-2.0-or-later code.
+Adaptations that use its later-version grant are GPL-3.0-or-later. See
+[LICENSE](LICENSE), the source file headers, and [licenses/](licenses) for
+adaptation details and third-party notices. NVIDIA, AMD and other components
+keep their own terms.
+
+Русская версия: [README.ru.md](README.ru.md).
