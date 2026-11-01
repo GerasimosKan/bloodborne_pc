@@ -60,7 +60,8 @@ public partial class MainWindow
     static void ExtractPackage(ZipArchive archive, string root)
     {
         string rootFull = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        string? top = archive.Entries.Select(e => e.FullName.Replace('\\', '/').Split('/')[0]).Distinct().SingleOrDefault();
+        var tops = archive.Entries.Select(e => e.FullName.Replace('\\', '/').Split('/')[0]).Distinct().ToList();
+        string? top = tops.Count == 1 && tops[0] is not ("" or "." or "..") ? tops[0] : null;
         bool strip = top != null && archive.Entries.All(e => e.FullName.Replace('\\', '/').Contains('/'));
         foreach (var entry in archive.Entries)
         {

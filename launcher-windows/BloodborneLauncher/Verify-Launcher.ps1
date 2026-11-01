@@ -297,6 +297,25 @@ static class Program
         string sums="aa11  other.zip\r\nBB22 *Pkg-Windows-x64.zip\n";
         Check((string?)expectedSha.Invoke(null,new object[]{sums,"Pkg-Windows-x64.zip"})=="BB22","Checksum line found (binary-mode '*', CRLF)");
         Check(expectedSha.Invoke(null,new object[]{sums,"missing.zip"})==null,"Missing checksum refuses the update");
+        var isNewer=typeof(MainWindow).GetMethod("IsNewerRelease",BindingFlags.Static|BindingFlags.NonPublic)!;
+        foreach(var (latest,installed,want) in new[]{("v0.10","v0.9",true),("v0.9","v0.10",false),("v0.8","v0.8",false),("v0.8","",true),("v0.8","v0.4.1-stability.6",true),("garbage","v0.8",false),("v1","v0.9",true)})
+            Check((bool)isNewer.Invoke(null,new object[]{latest,installed})! == want,$"IsNewerRelease({latest},{installed})=={want}");
+        var extract=typeof(MainWindow).GetMethod("ExtractPackage",BindingFlags.Static|BindingFlags.NonPublic)!;
+        string zipDir=Path.Combine(root,"zip-fixtures");
+        string Extracted(string name,params string[] entries){
+            string zip=Path.Combine(zipDir,name+".zip"), dest=Path.Combine(zipDir,name,"root");
+            Directory.CreateDirectory(dest);
+            using(var a=System.IO.Compression.ZipFile.Open(zip,System.IO.Compression.ZipArchiveMode.Create))
+                foreach(var entry in entries){ using var w=new StreamWriter(a.CreateEntry(entry).Open()); w.Write(entry); }
+            using(var a=System.IO.Compression.ZipFile.OpenRead(zip)) extract.Invoke(null,new object[]{a,dest});
+            return dest;
+        }
+        string nested=Extracted("nested","Bloodborne-PC/BloodborneLauncher.exe","Bloodborne-PC/out/release_tag.txt");
+        Check(File.Exists(Path.Combine(nested,"BloodborneLauncher.exe"))&&File.ReadAllText(Path.Combine(nested,"out","release_tag.txt"))=="Bloodborne-PC/out/release_tag.txt"&&!Directory.Exists(Path.Combine(nested,"Bloodborne-PC")),"Package's Bloodborne-PC/ folder is dropped");
+        string flat=Extracted("flat","a.txt","out/b.txt");
+        Check(File.Exists(Path.Combine(flat,"a.txt"))&&File.Exists(Path.Combine(flat,"out","b.txt")),"Flat package extracts unchanged");
+        try { Extracted("evil","../evil.txt"); Check(false,"Zip-slip entry is rejected"); }
+        catch(TargetInvocationException ex) when (ex.InnerException is IOException) { Check(!File.Exists(Path.Combine(zipDir,"evil","evil.txt")),"Zip-slip entry is rejected and writes nothing outside root"); }
         Console.WriteLine($"PASS: {assertions} assertions; settings, navigation, all quick options, launch environment and artwork.");
         window.Close(); app.Shutdown();
     }
