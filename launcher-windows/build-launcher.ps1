@@ -143,6 +143,7 @@ if (-not $NoZip) {
     try {
         Copy-Runtime $pkg  # creates $pkg
         Copy-Item $exe $pkg
+        Set-Content (Join-Path $pkg "out/release_tag.txt") "v$Version"  # the updater compares this with the latest release
         # Not in the repository: taken from $AssetsDir. fsr4_411 is left out: it is built from
         # the user's own AMD DLL.
         foreach ($d in 'fsr4_shaders', 'tools') { if (Test-Path "$AssetsDir\$d") { Copy-Tree "$AssetsDir\$d" "$pkg\$d" } }

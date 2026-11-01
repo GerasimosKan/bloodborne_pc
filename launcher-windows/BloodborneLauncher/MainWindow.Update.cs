@@ -8,11 +8,12 @@ using System.Windows;
 
 namespace BloodborneLauncher;
 
-// Self-update from the upstream GitHub releases. The package zip is flat and ships no bbport.ini,
-// launcher-settings.json or game dump, so extracting it over the install keeps the user's files.
+// Self-update from this fork's GitHub releases: tag v<version>, assets UPDATE.<version>-Bloodborne-PC.zip
+// and SHA256SUMS (both from build-launcher.ps1). The zip ships no bbport.ini, launcher-settings.json,
+// mods or game dump, so extracting it over the install keeps the user's files.
 public partial class MainWindow
 {
-    const string UpdateRepo = "DarkIzuku/bloodborne_pc";
+    const string UpdateRepo = "GerasimosKan/bloodborne_pc";
     string? updateTag, updateZipUrl, updateSumsUrl;
     string ReleaseTagFile => Path.Combine(root, "out", "release_tag.txt");
 
@@ -33,6 +34,48 @@ public partial class MainWindow
         sums.Split('\n').Select(line => line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
             .FirstOrDefault(parts => parts.Length == 2 && parts[1].TrimStart('*') == fileName)?[0];
 
+    // "v0.10" -> [0, 10]; null when the tag is not a plain version number.
+    static int[]? VersionParts(string tag)
+    {
+        var parts = tag.Trim().TrimStart('v', 'V').Split('.');
+        var numbers = new int[parts.Length];
+        for (int i = 0; i < parts.Length; i++) if (!int.TryParse(parts[i], out numbers[i]) || numbers[i] < 0) return null;
+        return numbers;
+    }
+
+    // Numeric, so 0.10 > 0.9; never offers an older or same release. An unknown install takes any valid release.
+    static bool IsNewerRelease(string latest, string installed)
+    {
+        if (VersionParts(latest) is not int[] next) return false;
+        if (VersionParts(installed) is not int[] current) return true;
+        for (int i = 0; i < Math.Max(next.Length, current.Length); i++)
+        {
+            int a = i < next.Length ? next[i] : 0, b = i < current.Length ? current[i] : 0;
+            if (a != b) return a > b;
+        }
+        return false;
+    }
+
+    // Extracts over root, dropping the zip's single top folder (Bloodborne-PC/) when every entry has it.
+    static void ExtractPackage(ZipArchive archive, string root)
+    {
+        string rootFull = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        string? top = archive.Entries.Select(e => e.FullName.Replace('\\', '/').Split('/')[0]).Distinct().SingleOrDefault();
+        bool strip = top != null && archive.Entries.All(e => e.FullName.Replace('\\', '/').Contains('/'));
+        foreach (var entry in archive.Entries)
+        {
+            string name = entry.FullName.Replace('\\', '/');
+            if (strip) name = name[(top!.Length + 1)..];
+            if (name == "") continue;
+            string target = Path.GetFullPath(Path.Combine(rootFull, name));
+            if (!target.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
+                throw new IOException("The package contains a path outside the install folder: " + entry.FullName);
+            if (name.EndsWith('/')) { Directory.CreateDirectory(target); continue; }
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            entry.ExtractToFile(target, overwrite: true);
+        }
+    }
+
     async void CheckForUpdate()
     {
         if (!IsPortableInstall) return;
@@ -43,12 +86,12 @@ public partial class MainWindow
             using var release = JsonDocument.Parse(await http.GetStringAsync($"https://api.github.com/repos/{UpdateRepo}/releases/latest"));
             string tag = release.RootElement.GetProperty("tag_name").GetString() ?? "";
             string installed = File.Exists(ReleaseTagFile) ? File.ReadAllText(ReleaseTagFile).Trim() : "";
-            if (tag == "" || tag == installed) return;
+            if (!IsNewerRelease(tag, installed)) return;
             foreach (var asset in release.RootElement.GetProperty("assets").EnumerateArray())
             {
                 string name = asset.GetProperty("name").GetString() ?? "";
                 string url = asset.GetProperty("browser_download_url").GetString() ?? "";
-                if (name.EndsWith("-Windows-x64.zip", StringComparison.OrdinalIgnoreCase)) updateZipUrl = url;
+                if (name.StartsWith("UPDATE.", StringComparison.OrdinalIgnoreCase) && name.EndsWith("-Bloodborne-PC.zip", StringComparison.OrdinalIgnoreCase)) updateZipUrl = url;
                 else if (name.StartsWith("SHA256SUMS", StringComparison.OrdinalIgnoreCase)) updateSumsUrl = url;
             }
             if (updateZipUrl == null || updateSumsUrl == null) return; // never install an unverifiable package
@@ -108,7 +151,7 @@ public partial class MainWindow
             {
                 File.Move(exe, old, true); // Windows lets a running exe be renamed, not overwritten
                 moved = true;
-                await Task.Run(() => archive.ExtractToDirectory(root, overwriteFiles: true)); // rejects entries escaping root
+                await Task.Run(() => ExtractPackage(archive, root));
             }
             File.WriteAllText(ReleaseTagFile, updateTag);
         }
