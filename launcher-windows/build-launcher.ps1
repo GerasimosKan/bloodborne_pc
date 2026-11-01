@@ -133,7 +133,7 @@ if (-not $NoZip) {
     $versionFile = Join-Path $dist 'version.txt'
     if (-not $Version) {
         $last = (Get-Content $versionFile -ErrorAction SilentlyContinue | Select-Object -First 1)
-        if ($last -notmatch '^\d+(\.\d+)*$') { $last = '0.7' }
+        if ("$last" -notmatch '^\d+(\.\d+)*$') { $last = '0.7' }
         $parts = $last.Split('.'); $parts[-1] = [int]$parts[-1] + 1; $Version = $parts -join '.'
     }
     $stage = Join-Path ([IO.Path]::GetTempPath()) "bbpc-package-$([Guid]::NewGuid().ToString('N'))"
