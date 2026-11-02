@@ -51,12 +51,23 @@ try {
     Copy-Item "$repo\run.py" $pkg -Force
     Copy-Item "$repo\scripts\trophy_import.py" "$pkg\scripts" -Force
     [IO.File]::WriteAllText("$pkg\VERSION", "$Version`n")  # the updater compares this with the latest release
+    # 0.7's launcher folder is empty in the Windows package. The Tk files stay: bbport-run.exe's
+    # PyInstaller boot hook refuses to start without _tcl_data, even for --play.
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$pkg\launcher"
+    Copy-Item "$PSScriptRoot\README-Windows.txt" $pkg -Force  # 0.7's README describes its own launcher
     Rename-Item $pkg 'Bloodborne-PC'
 
     Write-Host '== Packaging'
     $zip = Join-Path $dist "UPDATE.$Version-Bloodborne-PC.zip"
     Remove-Item $zip -ErrorAction SilentlyContinue
-    [IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip, [IO.Compression.CompressionLevel]::Optimal, $false)
+    # Entry names with '/': Windows PowerShell's CreateFromDirectory writes '\', which other unzip tools mangle.
+    $archive = [IO.Compression.ZipFile]::Open($zip, 'Create')
+    try {
+        foreach ($file in Get-ChildItem $stage -Recurse -File) {
+            $name = $file.FullName.Substring($stage.Length + 1).Replace('\', '/')
+            [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $file.FullName, $name, 'Optimal')
+        }
+    } finally { $archive.Dispose() }
     $hash = (Get-FileHash $zip).Hash.ToLower()
     [IO.File]::WriteAllText("$dist\SHA256SUMS", "$hash  $(Split-Path $zip -Leaf)`n")  # sha256sum format, no BOM
     Set-Content "$dist\version.txt" $Version
