@@ -1,5 +1,6 @@
 # Builds a release of this fork on Windows: deadinside28's official Windows package with this
-# repository's launcher (launcher/windows, which updates itself) swapped in. Needs the .NET 9 SDK.
+# fork's launcher (launcher-windows/BloodborneLauncher, which updates itself) in place of Bloodborne.exe.
+# Needs the .NET 8 SDK.
 #   .\packaging\windows\repack.ps1                  next version: 0.7 -> 0.7.1 -> 0.7.2 (dist\version.txt)
 #   -Version 0.7.5                                  a version of your own
 #   -Source C:\path\to\package.zip                  a Windows package zip instead of deadinside28's latest release
@@ -39,11 +40,16 @@ try {
     }
 
     Write-Host "== Building the launcher ($Version)"
-    # The flags of packaging/windows/package.sh.
-    dotnet publish "$repo\launcher\windows" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true `
-        -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o "$work\launcher"
+    # This fork's launcher (launcher-windows) replaces 0.7's Bloodborne.exe: one launcher exe per package.
+    dotnet publish "$repo\launcher-windows\BloodborneLauncher\BloodborneLauncher.csproj" -c Release -r win-x64 --self-contained true `
+        -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o "$work\launcher"
     if ($LASTEXITCODE) { throw 'dotnet publish failed.' }
-    Copy-Item "$work\launcher\Bloodborne.exe" $pkg -Force
+    Remove-Item "$pkg\Bloodborne.exe"
+    Copy-Item "$work\launcher\BloodborneLauncher.exe" $pkg -Force
+    # Plain-source parts this fork changes (the engine binaries stay deadinside28's): run.py imports
+    # trophies earned with the old fork (scripts\trophy_import.py).
+    Copy-Item "$repo\run.py" $pkg -Force
+    Copy-Item "$repo\scripts\trophy_import.py" "$pkg\scripts" -Force
     [IO.File]::WriteAllText("$pkg\VERSION", "$Version`n")  # the updater compares this with the latest release
     Rename-Item $pkg 'Bloodborne-PC'
 
