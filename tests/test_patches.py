@@ -229,6 +229,22 @@ class ModEbootTests(unittest.TestCase):
             self.assertEqual(writes, [(0x1000, b'\x90')])
 
 
+class ForkFixTests(unittest.TestCase):
+    def test_new_game_mutex_fix(self):
+        # packaging/windows/patches: Lock, TryLock and Unlock call DLLightMutex::Initialize (0x207ee40)
+        # where they panicked, on by default.
+        fixes = ROOT / 'packaging/windows/patches/bbport-fork-fixes.xml'
+        found = patches.external_patches(fixes.parent, '01.09', XML)
+        self.assertEqual([key for key, _, _ in found], ['bbport-fork-fixes.xml/Fix: New Game crash (Mutex is not initialized)'])
+        writes = patches.compile_external(patches.external_selection(found, None), [(0, 0x50d96dc)])
+        self.assertEqual([offset for offset, _ in writes], [0x207eea3, 0x207ef93, 0x207f083])
+        for offset, data in writes:
+            self.assertEqual(len(data), 26)
+            self.assertEqual(data[:4], bytes.fromhex('4889dfe8'))  # mov rdi, rbx; call
+            self.assertEqual(offset + 8 + struct.unpack_from('<i', data, 4)[0], 0x207ee40)
+            self.assertEqual(data[8:], bytes([0x90]) * 18)
+
+
 class FrameRateTests(unittest.TestCase):
     def test_frame_rate_needs_no_patches_but_with_hooks_off(self):
         # Above 30 FPS hooks in the game's code run the frame rate (gpu/shim/bbport_frame_rate.cpp).

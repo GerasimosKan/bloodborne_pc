@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- bbport fork: fixes for the 0.7 engine that ship as game patches (patches.py applies them on every start). -->
+<Patch>
+  <TitleID><ID>CUSA03173</ID><ID>CUSA00207</ID><ID>CUSA00208</ID><ID>CUSA00900</ID><ID>CUSA01363</ID><ID>CUSA03023</ID></TitleID>
+  <Metadata Title="Bloodborne" Name="Fix: New Game crash (Mutex is not initialized)" Author="GerasimosKan" PatchVer="1.0" AppVer="01.09" AppElf="eboot.bin" isEnabled="true"
+            Note="New Game crashed as the opening movie started (deadinside28/bloodborne_pc#392): the movie's audio thread runs at once on a PC and locks a DLLightMutex before its owner initialised it. Lock, TryLock and Unlock now initialise the mutex themselves instead of panicking (Initialize does nothing when it already is).">
+    <PatchList>
+      <Line Type="bytes" Address="0x0247EEA3" Value="4889DFE895FFFFFF909090909090909090909090909090909090"/>
+      <Line Type="bytes" Address="0x0247EF93" Value="4889DFE8A5FEFFFF909090909090909090909090909090909090"/>
+      <Line Type="bytes" Address="0x0247F083" Value="4889DFE8B5FDFFFF909090909090909090909090909090909090"/>
+    </PatchList>
+  </Metadata>
+</Patch>
