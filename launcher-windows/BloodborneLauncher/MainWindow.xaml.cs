@@ -153,7 +153,7 @@ public partial class MainWindow : Window
 
         GameVersionStatus.Text = valid ? version : "Not configured";
         GameVersionStatus.Foreground = valid && version.Contains("1.09") ? Green() : Red();
-        PathValidationText.Text = valid ? $"Game dump detected · {version} · {gameDir}" : "Put the CUSA03173 folder (eboot.bin and sce_sys) next to the launcher.";
+        PathValidationText.Text = valid ? $"Game dump detected · {version}" : "Put the CUSA03173 folder (eboot.bin and sce_sys) next to the launcher.";
         PlayButton.IsEnabled = valid && !gameRunning;
         PlayHint.Text = valid ? "Ready. Settings are saved automatically when Play is pressed." : "Put a valid Bloodborne dump in the CUSA03173 folder before playing.";
 

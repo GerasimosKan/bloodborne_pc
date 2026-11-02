@@ -170,7 +170,7 @@
                                             </Grid.ColumnDefinitions>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="28" />
-                                                <RowDefinition Height="36" />
+                                                <RowDefinition Height="0" /> <!-- game path: always CUSA03173 next to the launcher, not shown -->
                                                 <RowDefinition Height="28" />
                                                 <RowDefinition Height="28" />
                                                 <RowDefinition Height="28" />
@@ -181,9 +181,9 @@
                                             <TextBlock Grid.Row="0" Text="" FontFamily="Segoe MDL2 Assets" VerticalAlignment="Center" Foreground="#B2A591" />
                                             <TextBlock Grid.Row="0" Grid.Column="1" Text="Game version" Style="{StaticResource StatusLabel}" />
                                             <TextBlock Grid.Row="0" Grid.Column="2" x:Name="GameVersionStatus" Text="Not configured" Style="{StaticResource StatusValue}" />
-                                            <TextBlock Grid.Row="1" Text="&#xE838;" FontFamily="Segoe MDL2 Assets" VerticalAlignment="Center" Foreground="#B2A591" />
-                                            <TextBlock Grid.Row="1" Grid.Column="1" Text="Game path" Style="{StaticResource StatusLabel}" />
-                                            <DockPanel Grid.Row="1" Grid.Column="2" Margin="0,2">
+                                            <TextBlock Grid.Row="1" Visibility="Collapsed" Text="&#xE838;" FontFamily="Segoe MDL2 Assets" VerticalAlignment="Center" Foreground="#B2A591" />
+                                            <TextBlock Grid.Row="1" Visibility="Collapsed" Grid.Column="1" Text="Game path" Style="{StaticResource StatusLabel}" />
+                                            <DockPanel Grid.Row="1" Visibility="Collapsed" Grid.Column="2" Margin="0,2">
                                                 <TextBox x:Name="PathBox" IsReadOnly="True" Padding="8,4" FontSize="12" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
                                             </DockPanel>
                                             <TextBlock Grid.Row="2" Text="" FontFamily="Segoe MDL2 Assets" VerticalAlignment="Center" Foreground="#B2A591" />
