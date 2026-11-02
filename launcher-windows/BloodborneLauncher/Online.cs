@@ -171,9 +171,11 @@ public partial class MainWindow
                     catch (Exception)
                     {
                     }
+                    // The page comes from the server's reply: open only a web address, never a file or another protocol.
+                    if (Uri.TryCreate(page, UriKind.Absolute, out var uri) && uri.Scheme is "https" or "http" && !uri.IsUnc)
                     try
                     {
-                        Process.Start(new ProcessStartInfo(page) { UseShellExecute = true });
+                        Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
                     }
                     catch (Exception)
                     {
