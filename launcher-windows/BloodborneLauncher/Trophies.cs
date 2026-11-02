@@ -21,6 +21,52 @@ public partial class MainWindow
 {
     private const string TrophyNpId = "NPWR05818_00";
 
+    /// Bloodborne's trophies by id as PSN lists them (the fork's own list; 34..39 are The Old Hunters):
+    /// names, grades and descriptions when the game has not decrypted its TROP.XML (no trophy key).
+    private static readonly (int Id, char Grade, bool Hidden, string Name, string Detail)[] BuiltInTrophies =
+    {
+        (0, 'P', false, "Bloodborne", "All trophies acquired. Hats off!"),
+        (1, 'G', true, "Yharnam Sunrise", "You lived through the hunt, and saw another day."),
+        (2, 'G', true, "Honoring Wishes", "Captivated by the Moon Presence, you pledge to watch over the Hunter's Dream."),
+        (3, 'G', true, "Childhood's Beginning", "You became an infant Great One, lifting humanity into its next childhood."),
+        (4, 'G', true, "Yharnam, Pthumerian Queen", "Defeat Yharnam, Blood Queen of the Old Labyrinth."),
+        (5, 'G', false, "Hunter's Essence", "Acquire all hunter weapons."),
+        (6, 'G', false, "Hunter's Craft", "Acquire all special hunter tools."),
+        (7, 'S', false, "Weapon Master", "Acquire a weapon of the highest level."),
+        (8, 'S', false, "Blood Gem Master", "Acquire an extremely precious blood gem."),
+        (9, 'S', false, "Rune Master", "Acquire an extremely precious Caryll Rune."),
+        (10, 'S', true, "Cainhurst", "Gain entry to Cainhurst, the lost and ruined castle."),
+        (11, 'S', true, "The Choir", "Gain entry to the realm of the Choir, the high stratum of the Healing Church."),
+        (12, 'S', true, "The Source of the Dream", "Discover the abandoned old workshop, the source of the Hunter's Dream."),
+        (13, 'S', true, "Nightmare Lecture Building", "Gain entry into the Byrgenwerth lecture building, that drifts within the realm of nightmare."),
+        (14, 'B', true, "Father Gascoigne", "Defeat the beast that once was Father Gascoigne."),
+        (15, 'B', true, "Vicar Amelia", "Defeat the beast that once was Vicar Amelia."),
+        (16, 'B', true, "Shadow of Yharnam", "Defeat the Shadow of Yharnam."),
+        (17, 'B', true, "Rom, the Vacuous Spider", "Defeat Great One: Rom, the Vacuous Spider."),
+        (18, 'B', true, "The One Reborn", "Defeat the One Reborn."),
+        (19, 'B', true, "Micolash, Host of the Nightmare", "Defeat Micolash, Host of the Nightmare."),
+        (20, 'B', true, "Mergo's Wet Nurse", "Defeat Great One: Mergo's Wet Nurse."),
+        (21, 'B', true, "Cleric Beast", "Defeat Cleric Beast."),
+        (22, 'B', true, "Blood-starved Beast", "Defeat Blood-starved Beast."),
+        (23, 'B', true, "The Witch of Hemwick", "Defeat the Witch of Hemwick."),
+        (24, 'B', true, "Darkbeast Paarl", "Defeat Darkbeast Paarl."),
+        (25, 'B', true, "Amygdala", "Defeat Great One: Amygdala."),
+        (26, 'B', true, "Martyr Logarius", "Defeat Martyr Logarius."),
+        (27, 'B', true, "Celestial Emissary", "Defeat Great One: Celestial Emissary."),
+        (28, 'B', true, "Ebrietas, Daughter of the Cosmos", "Defeat Great One: Ebrietas, Daughter of the Cosmos."),
+        (29, 'B', false, "Blood Gem Contact", "Acquire a blood gem that imbues hunter weapons with special strength."),
+        (30, 'B', false, "Rune Contact", "Acquire a Caryll Rune that endows hunters with special strength."),
+        (31, 'B', false, "Chalice of Pthumeru", "Acquire the Chalice of Pthumeru that seals the catacombs that form a web deep below Yharnam."),
+        (32, 'B', true, "Chalice of Ailing Loran", "Acquire the Chalice of Ailing Loran that seals the tragic land lost to the sands."),
+        (33, 'B', true, "Chalice of Isz", "Acquire the Great Chalice of Isz that seals the home of the cosmic kin."),
+        (34, 'G', false, "Old Hunter's Essence", "Acquire all old hunter weapons."),
+        (35, 'S', true, "Orphan of Kos", "Defeat Great One: Orphan of Kos."),
+        (36, 'B', true, "Ludwig, the Holy Blade", "Defeat the beast that was once Ludwig, the Holy Blade."),
+        (37, 'B', true, "Lady Maria of the Astral Clocktower", "Defeat Lady Maria of the Astral Clocktower."),
+        (38, 'B', true, "Living Failures", "Defeat the failed attempts to become Great Ones."),
+        (39, 'B', true, "Laurence, the First Vicar", "Defeat the beast that was once Laurence, the First Vicar."),
+    };
+
     private sealed record TrophyEntry(int Id, char Grade, bool Hidden, string Name, string Detail,
                                       bool Unlocked, string? Time, string? Icon);
 
@@ -133,9 +179,9 @@ public partial class MainWindow
                     break;
             }
         }
+        if (known.Count == 0)
+            known = BuiltInTrophies.ToList(); // no decrypted TROP.XML: the fork's list, so every trophy has its name
         var named = known.Count > 0;
-        if (!named)
-            known = got.OrderBy(id => id).Select(id => (id, '?', false, "", "")).ToList();
         var list = known.Select(t =>
         {
             var icon = folder is null ? null : Path.Combine(folder, $"TROP{t.Id:000}.PNG");

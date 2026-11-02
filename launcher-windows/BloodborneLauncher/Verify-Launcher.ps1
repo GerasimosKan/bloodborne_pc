@@ -225,6 +225,17 @@ static class Program
         // Updater: VERSION is the installed version; only BloodborneLauncher.exe beside bbport-run.exe updates.
         Check(Get<Button>("UpdateButton").Visibility==Visibility.Collapsed,"Updater stays offline outside a portable install");
         Check((bool)typeof(MainWindow).GetProperty("IsPortableInstall",BindingFlags.Static|BindingFlags.NonPublic)!.GetValue(null)! == false,"Test host is not a portable install");
+        // Trophies without a decrypted TROP.XML (no trophy key): the fork's own list names all 40.
+        string trophyUser = Path.Combine(Store.DataDir, "user", "trophy", "NPWR05818_00");
+        Directory.CreateDirectory(trophyUser);
+        File.WriteAllText(Path.Combine(trophyUser, "unlocked.txt"), "21\n");
+        var loaded = Call("LoadTrophies")!;
+        var trophyList = (System.Collections.IList)loaded.GetType().GetField("Item1")!.GetValue(loaded)!;
+        object cleric = trophyList[21]!;
+        object? Prop(string name) => cleric.GetType().GetProperty(name)!.GetValue(cleric);
+        Check(trophyList.Count==40 && (bool)loaded.GetType().GetField("Item2")!.GetValue(loaded)!, "Trophies named without a key: all 40");
+        Check((string?)Prop("Name")=="Cleric Beast" && (bool)Prop("Unlocked")! && Equals(Prop("Grade"), 'B'), "Built-in list: Cleric Beast, bronze, earned");
+        Directory.Delete(Path.Combine(Store.DataDir, "user", "trophy"), true);
         Check((string?)Static("InstalledVersion")=="","No VERSION: unknown install");
         File.WriteAllText(Path.Combine(root,"VERSION"),"0.7.1\n");
         Check((string?)Static("InstalledVersion")=="0.7.1","VERSION is the installed version");
