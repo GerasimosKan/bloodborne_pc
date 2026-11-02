@@ -234,6 +234,7 @@ def run(extra_args=(), env=None, on_line=None):
         log(f"bbport {(PACKAGE_DIR / 'VERSION').read_text().strip()}")
     if test_keys:
         log(f'Test settings ({test_env.name}): ' + ' '.join(f'{key}={env[key]}' for key in test_keys))
+    script('trophy_import.py', '--user', user)  # the older code's user/trophies.txt, once
     try:
         game = Path(env.get('BB_GAME_DIR') or PACKAGE_DIR.parent / 'CUSA03173')
         if not (game / 'eboot.bin').is_file():
