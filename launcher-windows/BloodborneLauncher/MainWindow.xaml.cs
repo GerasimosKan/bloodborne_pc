@@ -45,6 +45,8 @@ public partial class MainWindow : Window
         InitializeComponent();
         // Portable layout: the dump always sits next to the launcher as CUSA03173.
         store.Set("game_dir", Path.Combine(root, "CUSA03173"));
+        // The mods folder is there to find from the start (the zip carries no empty folders).
+        try { Directory.CreateDirectory(ModsDir); } catch (Exception) { }
         // This launcher is English; with no choice bbport-run.exe would give the in-game menu Russian.
         if (store.Settings["ui_language"] is null)
             store.Set("ui_language", "en");
