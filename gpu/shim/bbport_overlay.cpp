@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cfloat>
 #include <cstdlib>
 #include <cstring>
 #include <deque>
@@ -92,8 +93,8 @@ std::mutex banner_mutex;
 std::string banner_text;
 std::atomic<bool> banner_active{false};
 std::string prompt_title, prompt_text;
-/// Trophies to announce, oldest first; the front one is on screen (as shadPS4's trophy_ui.cpp:
-/// slides in from the right, stays, fades out over the last second).
+/// Trophies to announce, oldest first; the front one is on screen (the PS4's banner: slides in
+/// at the top left with a chime, stays, slides out).
 struct TrophyToast {
     char grade;
     std::string name;
@@ -494,11 +495,46 @@ ImTextureData* TrophyIcon(const std::filesystem::path& path) {
     return it->second;
 }
 
-// The front trophy of the queue: a dark panel at the top centre (the game's HUD has its health at
-// the top left, its echoes and insight at the top right), sliding down, with a badge in the
-// grade's colour, "Trophy earned" and the name.
+// The trophy chime: a short two-note bell made here (three notes for the platinum), on its own SDL
+// stream beside the game's. BB_AUDIO=none keeps it silent like the game.
+void Chime(bool platinum) {
+    static SDL_AudioStream* stream = []() -> SDL_AudioStream* {
+        const char* mode = bb_env("BB_AUDIO");
+        if ((mode && !std::strcmp(mode, "none")) || !SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+            return nullptr;
+        }
+        const SDL_AudioSpec spec{SDL_AUDIO_F32, 1, 48000};
+        SDL_AudioStream* s = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
+        if (s) {
+            SDL_ResumeAudioStreamDevice(s);
+        }
+        return s;
+    }();
+    if (!stream) {
+        return;
+    }
+    constexpr int rate = 48000;
+    constexpr float two_pi = 6.2831853f;
+    std::vector<float> pcm(rate * 6 / 5);
+    const float notes[] = {1318.5f, 1975.5f, 2637.0f}; // E6, B6, E7
+    for (int k = 0; k < (platinum ? 3 : 2); ++k) {
+        for (std::size_t i = std::size_t(k * 0.09f * rate); i < pcm.size(); ++i) {
+            const float t = float(i) / rate - k * 0.09f, f = notes[k];
+            const float envelope = std::min(t / 0.004f, 1.0f) * std::exp(-t * 5.0f);
+            // A bell: the fundamental and a quickly fading inharmonic partial.
+            pcm[i] += 0.12f * envelope *
+                      (std::sin(two_pi * f * t) + 0.35f * std::exp(-t * 8.0f) * std::sin(two_pi * 2.76f * f * t));
+        }
+    }
+    SDL_PutAudioStreamData(stream, pcm.data(), int(pcm.size() * sizeof(float)));
+}
+
+// The front trophy of the queue as the PS4's banner: a dark panel sliding in at the top left with
+// the trophy's icon (or a cup in its grade's colour), "You have earned a trophy." and the name;
+// the chime as it appears.
 void TrophyWindow(float dt) {
     TrophyToast toast;
+    bool appears = false;
     {
         std::scoped_lock lock{trophy_mutex};
         if (trophy_queue.empty()) {
@@ -508,6 +544,7 @@ void TrophyWindow(float dt) {
         auto& front = trophy_queue.front();
         if (front.elapsed <= 0.0f && front.elapsed + dt > 0.0f) {
             std::printf("Overlay: trophy shown: %s\n", front.name.c_str());
+            appears = true;
         }
         front.elapsed += dt;
         if (front.elapsed > TrophySeconds) {
@@ -517,52 +554,76 @@ void TrophyWindow(float dt) {
         }
         toast = front;
     }
+    if (appears) {
+        Chime(toast.grade == 'P');
+    }
     if (toast.elapsed < 0.0f) {
         return; // a delayed one (BB_TROPHY_TEST)
     }
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const ImU32 cup = toast.grade == 'P'   ? IM_COL32(158, 209, 255, 255)
+                      : toast.grade == 'G' ? IM_COL32(245, 199, 66, 255)
+                      : toast.grade == 'S' ? IM_COL32(199, 204, 214, 255)
+                      : toast.grade == 'B' ? IM_COL32(205, 133, 77, 255)
+                                           : IM_COL32(200, 200, 200, 255);
+    // Slide in and out (ease-out cubic), fading with the motion.
+    const float in = std::clamp(std::min(toast.elapsed, TrophySeconds - toast.elapsed) / TrophySlide, 0.0f, 1.0f);
+    const float eased = 1.0f - (1.0f - in) * (1.0f - in) * (1.0f - in);
+
     const float s = base_scale;
-    const ImVec2 size{380.0f * s, 76.0f * s};
-    const float slide = std::min(toast.elapsed / TrophySlide, 1.0f);
-    const float eased = 1.0f - (1.0f - slide) * (1.0f - slide);
-    const float x = viewport->WorkPos.x + (viewport->WorkSize.x - size.x) * 0.5f;
-    const float y = viewport->WorkPos.y - size.y + (size.y + 24.0f * s) * eased;
-    const float alpha = std::clamp(std::min(slide, TrophySeconds - toast.elapsed), 0.0f, 1.0f);
-    auto* draw = ImGui::GetForegroundDrawList();
-    const auto a = [alpha](int r, int g, int b, int base) { return IM_COL32(r, g, b, int(base * alpha)); };
-    draw->AddRectFilled({x, y}, {x + size.x, y + size.y}, a(12, 10, 8, 220), 8.0f * s);
-    draw->AddRect({x, y}, {x + size.x, y + size.y}, a(150, 130, 100, 200), 8.0f * s, 0, 1.5f * s);
-    // The badge: the grade's colour (platinum, gold, silver, bronze; grey unknown) and its letter.
-    const ImU32 badge = toast.grade == 'P'   ? a(200, 215, 235, 255)
-                        : toast.grade == 'G' ? a(222, 180, 60, 255)
-                        : toast.grade == 'S' ? a(185, 190, 196, 255)
-                        : toast.grade == 'B' ? a(176, 112, 64, 255)
-                                             : a(120, 120, 120, 255);
-    const ImVec2 centre{x + 38.0f * s, y + size.y * 0.5f};
-    const char letter[2] = {toast.grade == '?' ? 'T' : toast.grade, 0};
-    const ImVec2 letter_size = ImGui::CalcTextSize(letter);
-    if (ImTextureData* icon = TrophyIcon(toast.icon)) {
-        // The game's icon, the grade as a small badge on its corner.
-        const float half = 26.0f * s;
-        draw->AddImageRounded(icon->GetTexRef(), {centre.x - half, centre.y - half}, {centre.x + half, centre.y + half},
-                              {0, 0}, {1, 1}, a(255, 255, 255, 255), 4.0f * s);
-        const ImVec2 dot{centre.x + half - 2.0f * s, centre.y + half - 2.0f * s};
-        draw->AddCircleFilled(dot, 9.0f * s, badge);
-        draw->AddCircle(dot, 9.0f * s, a(30, 25, 20, 255), 0, 1.5f * s);
-    } else {
-        draw->AddCircleFilled(centre, 24.0f * s, badge);
-        draw->AddCircle(centre, 24.0f * s, a(30, 25, 20, 255), 0, 2.0f * s);
-        draw->AddText({centre.x - letter_size.x * 0.5f, centre.y - letter_size.y * 0.5f}, a(30, 25, 20, 255), letter);
-    }
-    const float text_x = x + 76.0f * s, wrap = size.x - 88.0f * s;
+    ImFont* font = ImGui::GetFont();
+    const float small = ImGui::GetFontSize(), large = small * 1.2f;
     // In the game's language, as the name (BB_LANGUAGE, the PS4 number: 8 Russian).
     static const bool russian = [] {
         const char* env = bb_env("BB_LANGUAGE");
         return env && std::atoi(env) == 8;
     }();
-    draw->AddText({text_x, y + 12.0f * s}, a(200, 185, 150, 255), russian ? "Получен трофей" : "Trophy earned");
-    draw->AddText(nullptr, 0.0f, {text_x, y + 12.0f * s + ImGui::GetTextLineHeightWithSpacing()},
-                  a(240, 232, 215, 255), toast.name.c_str(), nullptr, wrap);
+    const char* line = russian ? "Вы получили трофей." : "You have earned a trophy.";
+    const float text_w = std::max(font->CalcTextSizeA(large, FLT_MAX, 0.0f, toast.name.c_str()).x,
+                                  font->CalcTextSizeA(small, FLT_MAX, 0.0f, line).x);
+    const float height = 84.0f * s, icon = 60.0f * s, gap = 12.0f * s;
+    const float width = std::max(360.0f * s, gap + icon + gap * 1.5f + text_w + gap * 2.0f);
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const float margin = 28.0f * s;
+    const ImVec2 at(viewport->WorkPos.x + margin - (width + margin) * (1.0f - eased), viewport->WorkPos.y + margin);
+    const auto alpha = [&](ImU32 c, float a) {
+        return (c & ~IM_COL32_A_MASK) | (ImU32(((c >> IM_COL32_A_SHIFT) & 0xff) * a * eased) << IM_COL32_A_SHIFT);
+    };
+
+    ImDrawList* draw = ImGui::GetForegroundDrawList();
+    const ImVec2 end(at.x + width, at.y + height);
+    draw->AddRectFilled(ImVec2(at.x + 3 * s, at.y + 4 * s), ImVec2(end.x + 3 * s, end.y + 4 * s),
+                        alpha(IM_COL32(0, 0, 0, 255), 0.35f), 10.0f * s); // shadow
+    draw->AddRectFilled(at, end, alpha(IM_COL32(24, 26, 31, 255), 0.94f), 10.0f * s);
+    draw->AddRect(at, end, alpha(IM_COL32(255, 255, 255, 255), 0.10f), 10.0f * s, 0, 1.0f * s);
+
+    const ImVec2 tile(at.x + gap, at.y + (height - icon) * 0.5f);
+    if (ImTextureData* tex = TrophyIcon(toast.icon)) {
+        draw->AddImageRounded(tex->GetTexRef(), tile, ImVec2(tile.x + icon, tile.y + icon), {0, 0}, {1, 1},
+                              alpha(IM_COL32(255, 255, 255, 255), 1.0f), 6.0f * s);
+    } else {
+        // The icon tile and the cup: bowl, handles, stem and base.
+        draw->AddRectFilled(tile, ImVec2(tile.x + icon, tile.y + icon), alpha(IM_COL32(44, 48, 56, 255), 1.0f),
+                            6.0f * s);
+        const ImVec2 c(tile.x + icon * 0.5f, tile.y + icon * 0.5f);
+        const float u = icon * 0.5f;
+        const ImU32 cup_col = alpha(cup, 1.0f);
+        draw->AddRectFilled(ImVec2(c.x - 0.42f * u, c.y - 0.55f * u), ImVec2(c.x + 0.42f * u, c.y + 0.05f * u),
+                            cup_col, 0.38f * u, ImDrawFlags_RoundCornersBottom);
+        draw->AddCircle(ImVec2(c.x - 0.45f * u, c.y - 0.32f * u), 0.17f * u, cup_col, 0, 0.09f * u);
+        draw->AddCircle(ImVec2(c.x + 0.45f * u, c.y - 0.32f * u), 0.17f * u, cup_col, 0, 0.09f * u);
+        draw->AddRectFilled(ImVec2(c.x - 0.07f * u, c.y + 0.02f * u), ImVec2(c.x + 0.07f * u, c.y + 0.36f * u),
+                            cup_col);
+        draw->AddRectFilled(ImVec2(c.x - 0.30f * u, c.y + 0.34f * u), ImVec2(c.x + 0.30f * u, c.y + 0.50f * u),
+                            cup_col, 0.05f * u);
+        draw->AddRectFilled(ImVec2(c.x - 0.28f * u, c.y - 0.48f * u), ImVec2(c.x - 0.16f * u, c.y - 0.10f * u),
+                            alpha(IM_COL32(255, 255, 255, 255), 0.35f), 0.06f * u); // shine
+    }
+
+    const float x = tile.x + icon + gap * 1.5f;
+    const float top = at.y + (height - small - large - 6.0f * s) * 0.5f;
+    draw->AddText(font, small, ImVec2(x, top), alpha(IM_COL32(170, 176, 186, 255), 1.0f), line);
+    draw->AddText(font, large, ImVec2(x, top + small + 6.0f * s), alpha(IM_COL32(255, 255, 255, 255), 1.0f),
+                  toast.name.c_str());
 }
 
 void TextPrompt() {

@@ -6,10 +6,14 @@ The game's trophy calls (`sceNpTrophy*`, `src/runtime_services.c`) are kept and 
 - Every unlock is kept in `user/trophy/<NP communication ID>/unlocked.txt` (Bloodborne:
   `NPWR05818_00`). Only the first unlock of a trophy is announced; the platinum follows once
   every trophy counting towards it is in.
-- The announcement: a panel at the top centre for 6 s (the game's HUD keeps the corners) with the
-  trophy's icon and a dot in the grade's colour (platinum, gold, silver, bronze), "Trophy earned"
-  and the name. The icons are decoded with SDL 3.4's PNG loader and handed to ImGui as user
-  textures; with an older SDL, or no icon, a badge in the grade's colour stands in.
+- The announcement: the PS4's banner, sliding in at the top left for 6 s with a short synthesized
+  chime (three notes for the platinum; silent with `BB_AUDIO=none`): the trophy's icon, "You have
+  earned a trophy." and the name. The icons are decoded with SDL 3.4's PNG loader and handed to
+  ImGui as user textures; with an older SDL, or no icon, a cup in the grade's colour (platinum,
+  gold, silver, bronze) stands in.
+- Trophies of the older trophy code (`user/trophies.txt`, "id unix_time name" a line) are
+  brought into `user/trophies.jsonl` and `unlocked.txt` by `scripts/trophy_import.py`, which
+  `run.py` calls on every Play; only missing ids are added and `trophies.txt` is left as it is.
 - Names and grades come from the game's `sce_sys/trophy/trophy00.trp`. Its XML is encrypted;
   the port decrypts it once into the same folder (with the trophy icons) when a trophy key is
   given: `BB_TROPHY_KEY=<32 hex digits>` in the environment or in a `.env` file in the port's
@@ -20,4 +24,3 @@ The game's trophy calls (`sceNpTrophy*`, `src/runtime_services.c`) are kept and 
 - `BB_TROPHY_TEST=<id>`: shows that trophy once, about 40 s after the start, nothing kept (to
   see the look).
 
-Not yet: a sound.

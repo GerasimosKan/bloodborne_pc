@@ -32,8 +32,8 @@ void UpdateTextInput(SDL_Window* window);
 bool Visible();
 /// A line of text over the game until called with null (bbgpu_overlay_banner).
 void SetBanner(const char* text);
-/// A trophy unlocked (bbport_trophies.cpp): announced at the top right for a few seconds, one
-/// after another. grade: P G S B, '?' unknown; icon: the trophy's PNG (empty: the grade's badge).
+/// A trophy unlocked (bbport_trophies.cpp): the PS4 banner at the top left with a chime, one
+/// after another. grade: P G S B, '?' unknown; icon: the trophy's PNG (empty: a cup in its colour).
 /// delay: seconds of drawn frames before it shows (BB_TROPHY_TEST: past the game's start).
 void ShowTrophy(char grade, const std::string& name, const std::filesystem::path& icon, float delay = 0.0f);
 
