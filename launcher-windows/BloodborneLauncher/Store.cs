@@ -53,7 +53,16 @@ public sealed class Store
         }
         catch (Exception)
         {
-            Settings = new JsonObject();
+            // A damaged settings file falls back to the copy kept by the previous save.
+            try
+            {
+                Settings = JsonNode.Parse(File.ReadAllText(ConfigFile + ".bak", Encoding.UTF8))?.AsObject() ?? new JsonObject();
+                File.Copy(ConfigFile + ".bak", ConfigFile, true); // so the next save keeps this good copy as .bak, not the damaged file
+            }
+            catch (Exception)
+            {
+                Settings = new JsonObject();
+            }
         }
         ini.Clear();
         iniChanged.Clear();
@@ -143,9 +152,8 @@ public sealed class Store
 
     private static string DefaultText(JsonObject? item, string key)
     {
-        // The system language of the old launcher's default: Russian on a Russian Windows.
         if (key == "language")
-            return CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ru" ? "8" : "1";
+            return "1"; // English, as this launcher always was
         var node = item?["default"];
         if (node is null)
             return "";
@@ -171,11 +179,11 @@ public sealed class Store
                 Set(key, Get(key));
         }
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigFile)!);
-        File.WriteAllText(ConfigFile, Settings.ToJsonString(new JsonSerializerOptions
+        WriteSafely(ConfigFile, Settings.ToJsonString(new JsonSerializerOptions
         {
             WriteIndented = true,
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        }), new UTF8Encoding(false));
+        }));
         SaveIni();
     }
 
@@ -205,7 +213,19 @@ public sealed class Store
         }
         lines.AddRange(iniChanged.Where(left.Contains).Select(key => $"{key}={ini[key]}"));
         Directory.CreateDirectory(Path.GetDirectoryName(IniFile)!);
-        File.WriteAllText(IniFile, string.Join("\n", lines) + "\n", new UTF8Encoding(false));
+        WriteSafely(IniFile, string.Join("\n", lines) + "\n");
         iniChanged.Clear();
+    }
+
+    // Write beside the target and swap it in, so a crash mid-save never truncates the file;
+    // the previous version is kept as .bak.
+    internal static void WriteSafely(string path, string text)
+    {
+        var temp = path + ".tmp";
+        File.WriteAllText(temp, text, new UTF8Encoding(false));
+        if (File.Exists(path))
+            File.Replace(temp, path, path + ".bak");
+        else
+            File.Move(temp, path);
     }
 }

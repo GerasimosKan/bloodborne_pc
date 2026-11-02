@@ -43,9 +43,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        // Portable layout: a dump next to the launcher is the game until another folder is chosen.
-        if (store.Get("game_dir").Length == 0 && Directory.Exists(Path.Combine(root, "CUSA03173")))
-            store.Set("game_dir", Path.Combine(root, "CUSA03173"));
+        // Portable layout: the dump always sits next to the launcher as CUSA03173.
+        store.Set("game_dir", Path.Combine(root, "CUSA03173"));
         // This launcher is English; with no choice bbport-run.exe would give the in-game menu Russian.
         if (store.Settings["ui_language"] is null)
             store.Set("ui_language", "en");
@@ -154,9 +153,9 @@ public partial class MainWindow : Window
 
         GameVersionStatus.Text = valid ? version : "Not configured";
         GameVersionStatus.Foreground = valid && version.Contains("1.09") ? Green() : Red();
-        PathValidationText.Text = valid ? $"Game dump detected · {version} · {gameDir}" : "Choose the CUSA03173 folder (eboot.bin and sce_sys) on the Play page.";
+        PathValidationText.Text = valid ? $"Game dump detected · {version} · {gameDir}" : "Put the CUSA03173 folder (eboot.bin and sce_sys) next to the launcher.";
         PlayButton.IsEnabled = valid && !gameRunning;
-        PlayHint.Text = valid ? "Ready. Settings are saved automatically when Play is pressed." : "Choose a valid Bloodborne dump (CUSA03173) before playing.";
+        PlayHint.Text = valid ? "Ready. Settings are saved automatically when Play is pressed." : "Put a valid Bloodborne dump in the CUSA03173 folder before playing.";
 
         bool runtime = File.Exists(Runner);
         RuntimeStatus.Text = runtime ? "Ready" : "bbport-run.exe not found";
@@ -263,16 +262,6 @@ public partial class MainWindow : Window
         }
     }
 
-    void BrowseGame_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFolderDialog { Title = "The game folder (CUSA03173: eboot.bin and sce_sys)" };
-        if (Directory.Exists(store.Get("game_dir"))) dialog.InitialDirectory = store.Get("game_dir");
-        if (dialog.ShowDialog(this) != true) return;
-        store.Set("game_dir", dialog.FolderName);
-        store.Save();
-        RefreshStatus();
-        LoadHeroImage();
-    }
 
     void Play_Click(object sender, RoutedEventArgs e)
     {

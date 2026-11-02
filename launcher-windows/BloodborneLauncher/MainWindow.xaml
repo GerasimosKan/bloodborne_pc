@@ -184,7 +184,6 @@
                                             <TextBlock Grid.Row="1" Text="&#xE838;" FontFamily="Segoe MDL2 Assets" VerticalAlignment="Center" Foreground="#B2A591" />
                                             <TextBlock Grid.Row="1" Grid.Column="1" Text="Game path" Style="{StaticResource StatusLabel}" />
                                             <DockPanel Grid.Row="1" Grid.Column="2" Margin="0,2">
-                                                <Button DockPanel.Dock="Right" Content="&#xE838;" FontFamily="Segoe MDL2 Assets" Padding="10,4" Margin="6,0,0,0" Click="BrowseGame_Click" AutomationProperties.Name="Choose the game folder" ToolTip="Choose the game folder (CUSA03173)" />
                                                 <TextBox x:Name="PathBox" IsReadOnly="True" Padding="8,4" FontSize="12" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
                                             </DockPanel>
                                             <TextBlock Grid.Row="2" Text="" FontFamily="Segoe MDL2 Assets" VerticalAlignment="Center" Foreground="#B2A591" />
@@ -273,7 +272,7 @@
                             <Border Style="{StaticResource CardStyle}">
                                 <StackPanel>
                                     <TextBlock Style="{StaticResource SectionTitle}" Text="GAME INSTALLATION" />
-                                    <TextBlock TextWrapping="Wrap" x:Name="PathValidationText" Foreground="#9CA3A9" Text="Choose the folder containing eboot.bin and sce_sys." />
+                                    <TextBlock TextWrapping="Wrap" x:Name="PathValidationText" Foreground="#9CA3A9" Text="Put the CUSA03173 folder (eboot.bin and sce_sys) next to the launcher." />
                                     <TextBlock Text="Language" Margin="0,18,0,6" />
                                     <ComboBox x:Name="LanguageCombo" AutomationProperties.Name="Language" Width="260" HorizontalAlignment="Left" />
                                 </StackPanel>

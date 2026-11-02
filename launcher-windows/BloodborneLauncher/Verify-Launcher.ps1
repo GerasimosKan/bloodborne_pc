@@ -69,6 +69,10 @@ static class Program
         string fakeRunner = Path.Combine(root,"fake-runner.bat");
         File.WriteAllText(fakeRunner,"@echo off\r\necho %* > \""+root+"\\launch-args.txt\"\r\ncd > \""+root+"\\launch-cwd.txt\"\r\necho session>>\""+root+"\\launch-count.txt\"\r\necho runner output line\r\nping 127.0.0.1 -n 3 > nul\r\n");
         File.WriteAllText(Path.Combine(root,"bbport.ini"),"# keep this comment\nunrelated_setting=keep\nupscaler=off\n");
+        // A damaged settings.json falls back to its .bak; a saved folder elsewhere is replaced by the one next to the launcher.
+        Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!);
+        File.WriteAllText(settingsFile,"{damaged");
+        File.WriteAllText(settingsFile+".bak","{\"game_dir\":\"C:/stale\",\"thd_online_id\":\"bak-fixture\"}");
         var app = new App();
         app.InitializeComponent();
 
@@ -141,6 +145,8 @@ static class Program
         Check(ini.Count(l=>l.StartsWith("upscaler="))==1,"bbport.ini keys are replaced, not repeated");
         var json=JsonNode.Parse(File.ReadAllText(settingsFile))!.AsObject();
         Check((string?)json["game_dir"]==game,"settings.json game_dir");
+        Check((string?)json["thd_online_id"]=="bak-fixture","Damaged settings.json loads the .bak");
+        Check(File.Exists(settingsFile+".bak") && File.Exists(Path.Combine(root,"bbport.ini.bak")) && !File.Exists(settingsFile+".tmp"),"Safe saves keep a .bak");
         Check((string?)json["fps_mode"]=="90" && (string?)json["language"]=="3" && (string?)json["present_mode"]=="Immediate","settings.json fps_mode, language, present_mode");
         Check(json["fullscreen"]!.GetValue<bool>(),"settings.json fullscreen");
         Check(json["upscaler"]==null,"Game keys stay out of settings.json");
