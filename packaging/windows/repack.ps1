@@ -49,7 +49,7 @@ try {
     # Plain-source parts this fork changes (the engine binaries stay deadinside28's): run.py imports
     # trophies earned with the old fork (scripts\trophy_import.py).
     Copy-Item "$repo\run.py" $pkg -Force
-    Copy-Item "$repo\scripts\trophy_import.py" "$pkg\scripts" -Force
+    Copy-Item "$repo\scripts\trophy_import.py", "$repo\scripts\mods.py", "$repo\scripts\patches.py" "$pkg\scripts" -Force  # eboot.bin and patch XML mods
     [IO.File]::WriteAllText("$pkg\VERSION", "$Version`n")  # the updater compares this with the latest release
     # 0.7's launcher folder is empty in the Windows package. The Tk files stay: bbport-run.exe's
     # PyInstaller boot hook refuses to start without _tcl_data, even for --play.

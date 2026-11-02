@@ -229,6 +229,14 @@ static class Program
         File.WriteAllText(Path.Combine(root,"VERSION"),"0.7.1\n");
         Check((string?)Static("InstalledVersion")=="0.7.1","VERSION is the installed version");
         File.Delete(Path.Combine(root,"VERSION"));
+        // Mods as scripts/mods.py content_root takes them: a modified eboot.bin or patch XML files alone make one.
+        string modsRoot = Path.Combine(root, "mod-fixtures");
+        if (Directory.Exists(modsRoot)) Directory.Delete(modsRoot, true);
+        Directory.CreateDirectory(Path.Combine(modsRoot, "Eboot")); File.WriteAllText(Path.Combine(modsRoot, "Eboot", "eboot.bin"), "modified");
+        Directory.CreateDirectory(Path.Combine(modsRoot, "Xml", "patches")); File.WriteAllText(Path.Combine(modsRoot, "Xml", "patches", "fov.xml"), "<Patch/>");
+        Directory.CreateDirectory(Path.Combine(modsRoot, "Empty"));
+        Check((bool)Static("IsMod", Path.Combine(modsRoot, "Eboot"))! && (bool)Static("IsMod", Path.Combine(modsRoot, "Xml"))!
+              && !(bool)Static("IsMod", Path.Combine(modsRoot, "Empty"))!, "eboot.bin and patch XML mods are recognised, an empty folder is not");
         string sums="aa11  other.zip\r\nBB22 *Pkg-Windows-x64.zip\n";
         Check((string?)Static("ExpectedSha256",sums,"Pkg-Windows-x64.zip")=="BB22","Checksum line found (binary-mode '*', CRLF)");
         Check(Static("ExpectedSha256",sums,"missing.zip")==null,"Missing checksum refuses the update");

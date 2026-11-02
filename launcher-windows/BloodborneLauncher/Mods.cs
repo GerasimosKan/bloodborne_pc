@@ -57,7 +57,7 @@ public partial class MainWindow
         foreach (var wrapper in new[] { "", "app0" }.Concat(Serials))
         {
             var basePath = wrapper.Length > 0 ? Path.Combine(folder, wrapper) : folder;
-            if (Directory.Exists(Path.Combine(basePath, "dvdroot_ps4")))
+            if (Directory.Exists(Path.Combine(basePath, "dvdroot_ps4")) || File.Exists(Path.Combine(basePath, "eboot.bin")))
                 return true;
         }
         var entries = new DirectoryInfo(folder).EnumerateFileSystemInfos().Where(e => !e.Name.StartsWith('.')).ToList();
@@ -67,7 +67,8 @@ public partial class MainWindow
         var notes = new[] { ".txt", ".md", ".jpg", ".png", ".ini" };
         if (folders.Count == 1 && !entries.OfType<FileInfo>().Any(f => !notes.Contains(f.Extension.ToLowerInvariant())))
             return IsMod(folders[0].FullName);
-        return false;
+        // A modified eboot.bin (above) or shadPS4 patch XML files alone also make a mod (patches.py mod_patches).
+        return Directory.EnumerateFiles(folder, "*.xml", SearchOption.AllDirectories).Any();
     }
 
     private static JsonObject ReadJson(string path)
@@ -220,13 +221,14 @@ public partial class MainWindow
     /// shadPS4 XML patches for this version in the folder (scripts/patches.py external_patches): key
     /// "<file>/<patch name>", the file's isEnabled, author and note. The port's own
     /// patches\Bloodborne.xml is not one of them.
-    private static List<(string Key, bool Default, string Name, string File, string Author, string Note)> ExternalPatches(string folder)
+    private static List<(string Key, bool Default, string Name, string File, string Author, string Note)> ExternalPatches(
+        string folder, string label = "", SearchOption depth = SearchOption.TopDirectoryOnly)
     {
         var found = new List<(string, bool, string, string, string, string)>();
         if (!Directory.Exists(folder))
             return found;
         var builtIn = Path.GetFullPath(Path.Combine(Store.PackageDir, "patches", "Bloodborne.xml"));
-        foreach (var file in Directory.EnumerateFiles(folder, "*.xml").OrderBy(f => f, StringComparer.Ordinal))
+        foreach (var file in Directory.EnumerateFiles(folder, "*.xml", depth).OrderBy(f => f, StringComparer.Ordinal))
         {
             if (string.Equals(Path.GetFullPath(file), builtIn, StringComparison.OrdinalIgnoreCase))
                 continue;
@@ -249,7 +251,7 @@ public partial class MainWindow
                 var name = (string?)meta.Attribute("Name") ?? "";
                 found.Add(($"{Path.GetFileName(file)}/{name}",
                            string.Equals((string?)meta.Attribute("isEnabled"), "true", StringComparison.OrdinalIgnoreCase),
-                           name, Path.GetFileName(file), (string?)meta.Attribute("Author") ?? "",
+                           name, label + Path.GetFileName(file), (string?)meta.Attribute("Author") ?? "",
                            ((string?)meta.Attribute("Note") ?? "").Replace("\\n", "\n")));
             }
         }
@@ -270,6 +272,16 @@ public partial class MainWindow
         {
             list.Children.Clear();
             var found = ExternalPatches(PatchesDir);
+            // The enabled mods' patches as patches.py mod_patches takes them: loose XML in the mods
+            // folder and any XML inside an enabled mod's folder.
+            if (store.Get("mods_enabled") != "0" && Directory.Exists(ModsDir))
+            {
+                var off = Strings(ReadJson(ModsConfig)["disabled"]).ToHashSet();
+                found.AddRange(ExternalPatches(ModsDir, "mods · "));
+                foreach (var mod in Directory.EnumerateDirectories(ModsDir).Where(IsMod).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+                    if (!off.Contains(Path.GetFileName(mod)))
+                        found.AddRange(ExternalPatches(mod, Path.GetFileName(mod) + " · ", SearchOption.AllDirectories));
+            }
             var profile = ReadJson(PatchesConfig);
             var enabled = Strings(profile["enabled"]).ToHashSet();
             var disabled = Strings(profile["disabled"]).ToHashSet();

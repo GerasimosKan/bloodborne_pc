@@ -82,9 +82,35 @@ class ModTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             mods.build_overlay(self.game, self.root / 'out', [('A', a)])
 
-    def test_executable_replacement_rejected(self):
+    def test_modified_executable_is_not_mounted(self):
+        # patches.py turns it into patch writes; the game keeps the verified original.
         a = self.mod('A')
-        (a / 'eboot.bin').write_bytes(b'unsupported')
+        (a / 'eboot.bin').write_bytes(b'modified')
+        result = mods.build_overlay(self.game, self.root / 'out', [('A', a)])
+        self.assertEqual((result / 'eboot.bin').read_bytes(), b'original executable')
+
+    def test_bare_mod_executable_is_not_mounted(self):
+        a = self.moddir / 'Bare'
+        (a / 'chr').mkdir(parents=True)
+        (a / 'chr' / 'a.dcx').write_bytes(b'mod')
+        (a / 'eboot.bin').write_bytes(b'modified')
+        result = mods.build_overlay(self.game, self.root / 'out', [('Bare', a)])
+        self.assertEqual((result / 'eboot.bin').read_bytes(), b'original executable')
+        self.assertFalse((result / 'dvdroot_ps4' / 'eboot.bin').exists())
+        self.assertEqual((result / 'dvdroot_ps4' / 'chr' / 'a.dcx').read_bytes(), b'mod')
+
+    def test_executable_or_patch_only_mods_discovered(self):
+        (self.moddir / 'Eboot').mkdir(parents=True)
+        (self.moddir / 'Eboot' / 'eboot.bin').write_bytes(b'modified')
+        (self.moddir / 'Xml' / 'patches').mkdir(parents=True)
+        (self.moddir / 'Xml' / 'patches' / 'fov.xml').write_text('<Patch/>')
+        (self.moddir / 'Empty').mkdir()
+        self.assertEqual(mods.discover(self.moddir), ['Eboot', 'Xml'])
+
+    def test_system_module_replacement_rejected(self):
+        a = self.mod('A')
+        (a / 'sce_module').mkdir()
+        (a / 'sce_module' / 'libc.prx').write_bytes(b'unsupported')
         with self.assertRaises(ValueError):
             mods.build_overlay(self.game, self.root / 'out', [('A', a)])
 

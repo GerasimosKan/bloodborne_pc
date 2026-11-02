@@ -331,7 +331,9 @@ def run(extra_args=(), env=None, on_line=None):
         script('patches.py', '--out', out, '--fps', fps, '--extra', env.get('BB_PATCHES', ''),
                '--settings', env['BB_CONFIG'], '--game-dir', game, '--render-res', env.get('BB_RENDER_RES', ''),
                '--output-res', env.get('BB_OUTPUT_RES', ''), '--patches-dir', env.get('BB_PATCHES_DIR', data / 'patches'),
-               '--patches-config', env.get('BB_PATCHES_CONFIG', data / 'patches.json'), '--large-heaps', large_heaps)
+               '--patches-config', env.get('BB_PATCHES_CONFIG', data / 'patches.json'), '--large-heaps', large_heaps,
+               *(['--mods-dir', env.get('BB_MODS_DIR', data / 'mods'), '--mods-config', env.get('BB_MODS_CONFIG', data / 'mods.json')]
+                 if env.get('BB_MODS_ENABLED', '1') == '1' else []))
         setdefault(env, 'BB_COPY_GPU_BUFFERS', '1')
         setdefault(env, 'BB_GPU_WRITE_TWINS', '1')
         setdefault(env, 'BB_GPU_WRITE_TWINS_MAX', '65536')
