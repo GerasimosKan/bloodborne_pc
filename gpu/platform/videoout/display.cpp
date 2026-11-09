@@ -413,18 +413,29 @@ void Display::VblankThread(std::stop_token stop) {
     const auto immediate_flips = [&] {
         return frame_limit != 0 || BbFrameRate::Limit() > 0 || EmulatorSettings.IsUncappedVblank();
     };
+    // The next slot after one taken at `now`: it keeps the phase across ordinary wake overshoot
+    // (each slot from the late wake made a 60 FPS limit about 57 on Windows, DarkIzuku 998b75c)
+    // and starts over half a period late or more, without catch-up frames.
+    const auto advance = [](std::chrono::steady_clock::time_point slot,
+                            std::chrono::steady_clock::time_point now,
+                            std::chrono::nanoseconds period) {
+        return now >= slot && now - slot < period / 2 ? slot + period : now + period;
+    };
     const auto flip = [&](const Request& request, std::chrono::steady_clock::time_point now) {
         if (const auto frame_period = period_now(); frame_period.count()) {
             next_flip = catch_up ? std::max(next_flip + frame_period, now - frame_period)
-                                 : std::max(next_flip, now) + frame_period;
+                                 : advance(next_flip, now, frame_period);
         }
         Flip(request);
     };
 
     Port& port = main_port;
+    // Vblank events keep their phase too: a game waiting a vblank per frame fell short of 60 FPS
+    // when each tick counted from the late wake (DarkIzuku 4942140).
+    auto tick_deadline = std::chrono::steady_clock::now();
     while (!stop.stop_requested()) {
         timer.Start();
-        const auto tick_deadline = std::chrono::steady_clock::now() + vblank_period;
+        tick_deadline = advance(tick_deadline, std::chrono::steady_clock::now(), vblank_period);
         const auto now = std::chrono::steady_clock::now();
         if ((!period_now().count() || now >= next_flip) &&
             port.vblank_status.count % u64(port.flip_rate + 1) == 0) {
@@ -456,6 +467,11 @@ void Display::VblankThread(std::stop_token stop) {
                                            [this] { return !requests.empty(); })) {
                     break;
                 }
+            }
+            // A queue that never drains keeps the wait true past its deadline: back to the outer
+            // loop for the vblank events guest threads wait on (DarkIzuku 58ee8f5).
+            if (std::chrono::steady_clock::now() >= tick_deadline) {
+                break;
             }
             if (std::chrono::steady_clock::now() < next_flip) {
                 if (next_flip >= tick_deadline) {

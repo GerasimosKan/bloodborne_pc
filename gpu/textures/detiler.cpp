@@ -289,6 +289,10 @@ std::pair<const Buffer*, u64> Detiler::TileImage(Image& image,
                                              MemoryType::DeviceLocal);
         Dispatch(Pipeline(info, true), {tiled.buffer->Handle(), tiled.offset, info.guest_size},
                  {staging.buffer->Handle(), staging.offset, info.guest_size}, levels, texels);
+        // A later writer reusing the staging range must wait for this tiler read.
+        runtime.AccessBuffer(staging.buffer, staging.offset, info.guest_size,
+                             vk::PipelineStageFlagBits2::eComputeShader,
+                             vk::AccessFlagBits2::eShaderRead);
         runtime.AccessBuffer(tiled.buffer, tiled.offset, info.guest_size,
                              vk::PipelineStageFlagBits2::eComputeShader,
                              vk::AccessFlagBits2::eShaderWrite);
@@ -299,6 +303,10 @@ std::pair<const Buffer*, u64> Detiler::TileImage(Image& image,
     }
     Dispatch(Pipeline(info, true), {out_buffer->Handle(), out_offset, info.guest_size},
              {staging.buffer->Handle(), staging.offset, info.guest_size}, levels, texels);
+    // A later writer reusing the staging range must wait for this tiler read.
+    runtime.AccessBuffer(staging.buffer, staging.offset, info.guest_size,
+                         vk::PipelineStageFlagBits2::eComputeShader,
+                         vk::AccessFlagBits2::eShaderRead);
     runtime.AccessBuffer(out_buffer, out_offset, info.guest_size,
                          vk::PipelineStageFlagBits2::eComputeShader,
                          vk::AccessFlagBits2::eShaderWrite);
