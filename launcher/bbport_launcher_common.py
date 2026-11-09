@@ -74,6 +74,9 @@ UPSCALERS = [("FSR 4", "fsr4"), ("FSR 4.1.1", "fsr411"), ("FSR 3", "fsr3"),
              ("TAA (нативное сглаживание)", "taa"), ("Выключен", "off")]
 PRESETS = [("Native AA", 0), ("Quality (x1.5)", 1), ("Balanced (x1.7)", 2),
            ("Performance (x2)", 3), ("Ultra Performance (x3)", 4)]
+# DLSS models: NGX render-preset hints (bbport_settings.cpp dlss_preset); 0 leaves the driver's choice.
+DLSS_PRESETS = [("Авто", "0")] + [(letter, str(number)) for letter, number in (
+    ("A", 1), ("B", 2), ("C", 3), ("D", 4), ("E", 5), ("F", 6), ("J", 10), ("K", 11), ("L", 12), ("M", 13))]
 # Output aspect ratios and their resolutions (gpu/shim/bbport_settings.cpp, the same lists): the
 # game keeps its 1920x1080 frame; for another aspect ratio its camera sees more to the sides (above
 # and below) and the UI keeps to the screen edges, changed live. Auto: the monitor's group.
@@ -233,6 +236,7 @@ DEFAULTS = {
 INI_DEFAULTS = {
     "upscaler": "fsr4",
     "preset": "4",
+    "dlss_preset": "0",
     "sharpen": "1",
     "sharpness": "0.50",
     "object_motion": "1",

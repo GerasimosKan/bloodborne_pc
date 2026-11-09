@@ -137,6 +137,8 @@ struct Values {
     std::atomic<bool> menu_language_chosen{false};
     std::atomic<int> upscaler{UpscalerFsr3};
     std::atomic<int> preset{NativeAA};
+    /// DLSS model: NGX render-preset hint (1-6 A-F, 10-13 J-M), 0 Auto (NGX picks per quality mode).
+    std::atomic<int> dlss_preset{0};
     std::atomic<bool> sharpen{true};
     std::atomic<float> sharpness{0.3f};
     std::atomic<bool> jitter{true};

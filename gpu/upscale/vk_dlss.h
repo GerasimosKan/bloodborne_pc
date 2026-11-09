@@ -54,6 +54,7 @@ public:
         u32 input_width, input_height, output_width, output_height;
         int quality;
         bool hdr;
+        int preset; // NGX render-preset hint (BbSettings dlss_preset), 0 Auto
         bool operator==(const FeatureDesc&) const = default;
     };
     struct Frame {

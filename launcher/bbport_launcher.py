@@ -399,6 +399,8 @@ class LauncherWindow(ContentPages, OnlinePage, TrophiesPage, LogPage, UpscalerFi
         self.preset_row.connect("notify::selected", lambda *_: self.update_upscaler_status())
         self.output_row.connect("notify::selected", lambda *_: self.update_upscaler_status())
         upscaler.add(self.preset_row)
+        self.dlss_preset_row = combo_row(tr("Модель DLSS"), None, DLSS_PRESETS, self.ini.get("dlss_preset", "0"))
+        upscaler.add(self.dlss_preset_row)
         self.sharpen_row = Adw.SwitchRow(title=tr("Резкость (RCAS)"),
                                          subtitle=tr("И без апскейлера: поверх сглаживания игры или FXAA"),
                                          active=self.ini.get("sharpen") == "1")
@@ -513,7 +515,8 @@ class LauncherWindow(ContentPages, OnlinePage, TrophiesPage, LogPage, UpscalerFi
             "skip_network_choice": self.skip_network_row, "display": self.display_row,
             "fullscreen": self.fullscreen_row, "aspect_ratio": self.aspect_row,
             "output_res": self.output_row, "present_mode": self.present_row, "hdr": self.hdr_row,
-            "upscaler": self.upscaler_row, "preset": self.preset_row, "anti_aliasing": self.aa_row,
+            "upscaler": self.upscaler_row, "preset": self.preset_row,
+            "dlss_preset": self.dlss_preset_row, "anti_aliasing": self.aa_row,
             "sharpen": self.sharpen_row, "sharpness": self.sharpness_row,
             "texture_quality": self.texture_row, "model_lod": self.lod_row,
             "object_motion": self.motion_row, "vbao": self.vbao_row,
@@ -632,6 +635,7 @@ class LauncherWindow(ContentPages, OnlinePage, TrophiesPage, LogPage, UpscalerFi
         else:
             hint = tr("Сглаживание в разрешении вывода без модели FSR") if value == "taa" else None
         self.preset_row.set_sensitive(value not in ("taa", "off"))
+        self.dlss_preset_row.set_visible(value == "dlss")
         # Sharpening works without an upscaler too (RCAS on the finished frame).
         self.sharpen_row.set_sensitive(True)
         self.sharpness_row.set_sensitive(True)
@@ -873,6 +877,7 @@ class LauncherWindow(ContentPages, OnlinePage, TrophiesPage, LogPage, UpscalerFi
             "frame_generation_multiplier": frame_generation_multiplier,
             "low_latency": combo_value(self.low_latency_row),
             "preset": str(combo_value(self.preset_row)),
+            "dlss_preset": combo_value(self.dlss_preset_row),
             "sharpen": "1" if self.sharpen_row.get_active() else "0",
             "sharpness": f"{self.sharpness_row.get_value():.2f}",
             "object_motion": "1" if self.motion_row.get_active() else "0",

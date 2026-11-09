@@ -647,6 +647,127 @@
      }
     },
     {
+     "key": "dlss_preset",
+     "type": "choice",
+     "store": "ini",
+     "default": "0",
+     "choices": [
+      {
+       "value": "0",
+       "ru": "Авто",
+       "en": "Auto",
+       "pt_BR": "Automático",
+       "zh_CN": "自动",
+       "fr_FR": "Auto"
+      },
+      {
+       "value": "1",
+       "ru": "A",
+       "en": "A",
+       "pt_BR": "A",
+       "zh_CN": "A",
+       "fr_FR": "A"
+      },
+      {
+       "value": "2",
+       "ru": "B",
+       "en": "B",
+       "pt_BR": "B",
+       "zh_CN": "B",
+       "fr_FR": "B"
+      },
+      {
+       "value": "3",
+       "ru": "C",
+       "en": "C",
+       "pt_BR": "C",
+       "zh_CN": "C",
+       "fr_FR": "C"
+      },
+      {
+       "value": "4",
+       "ru": "D",
+       "en": "D",
+       "pt_BR": "D",
+       "zh_CN": "D",
+       "fr_FR": "D"
+      },
+      {
+       "value": "5",
+       "ru": "E",
+       "en": "E",
+       "pt_BR": "E",
+       "zh_CN": "E",
+       "fr_FR": "E"
+      },
+      {
+       "value": "6",
+       "ru": "F",
+       "en": "F",
+       "pt_BR": "F",
+       "zh_CN": "F",
+       "fr_FR": "F"
+      },
+      {
+       "value": "10",
+       "ru": "J",
+       "en": "J",
+       "pt_BR": "J",
+       "zh_CN": "J",
+       "fr_FR": "J"
+      },
+      {
+       "value": "11",
+       "ru": "K",
+       "en": "K",
+       "pt_BR": "K",
+       "zh_CN": "K",
+       "fr_FR": "K"
+      },
+      {
+       "value": "12",
+       "ru": "L",
+       "en": "L",
+       "pt_BR": "L",
+       "zh_CN": "L",
+       "fr_FR": "L"
+      },
+      {
+       "value": "13",
+       "ru": "M",
+       "en": "M",
+       "pt_BR": "M",
+       "zh_CN": "M",
+       "fr_FR": "M"
+      }
+     ],
+     "title": {
+      "ru": "Модель DLSS",
+      "en": "DLSS model",
+      "pt_BR": "Modelo do DLSS",
+      "zh_CN": "DLSS 模型",
+      "fr_FR": "Modèle DLSS"
+     },
+     "description": {
+      "ru": "Пресет NVIDIA независимо от режима качества. Авто: выбирает драйвер. J/K — трансформер, L/M — новые; A–F — старые сверточные (новые драйверы могут их заменить). Модель, которую драйвер не принял, сменяется на Авто.",
+      "en": "NVIDIA's preset, whatever the quality mode. Auto: the driver picks. J/K: transformer, L/M: newer; A-F: the older CNN models (newer drivers may alias them). A model the driver rejects falls back to Auto.",
+      "pt_BR": "A predefinição da NVIDIA, seja qual for o modo de qualidade. Automático: o driver escolhe. J/K: transformer, L/M: mais novos; A-F: os modelos CNN antigos (drivers novos podem substituí-los). Um modelo que o driver recusa volta para Automático.",
+      "zh_CN": "NVIDIA 预设，与画质模式无关。自动：由驱动选择。J/K：Transformer，L/M：更新；A-F：旧的 CNN 模型（新驱动可能将其替换）。驱动不接受的模型会退回自动。",
+      "fr_FR": "Le préréglage NVIDIA, quel que soit le mode de qualité. Auto : le pilote choisit. J/K : transformer, L/M : plus récents ; A-F : les anciens modèles CNN (les pilotes récents peuvent les remplacer). Un modèle refusé par le pilote repasse en Auto."
+     },
+     "group": {
+      "ru": "Апскейлер",
+      "en": "Upscaler",
+      "pt_BR": "Upscaler",
+      "zh_CN": "超分辨率",
+      "fr_FR": "Upscaler"
+     },
+     "visible_when": {
+      "key": "upscaler",
+      "value": "dlss"
+     }
+    },
+    {
      "key": "frame_generation",
      "type": "special",
      "store": "ini",

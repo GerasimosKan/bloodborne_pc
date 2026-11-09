@@ -424,11 +424,19 @@ bool Dlss::CreateFeature(vk::CommandBuffer command, const FeatureDesc& desc) {
         return false;
     }
     impl->feature.reset();
-    const BbDlssFeature feature{desc.input_width,  desc.input_height, desc.output_width,
-                                desc.output_height, desc.quality,      0,
-                                0,                  desc.hdr ? 1 : 0};
+    BbDlssFeature feature{desc.input_width,  desc.input_height, desc.output_width,
+                          desc.output_height, desc.quality,      0,
+                          uint32_t(desc.preset), desc.hdr ? 1 : 0};
     if (!impl->api->CreateFeature(command, &feature)) {
-        return false;
+        // NGX cannot list the models it has: a rejected hint retries once with Auto.
+        if (!feature.preset) {
+            return false;
+        }
+        std::printf("DLSS: model %d rejected; retrying Auto\n", desc.preset);
+        feature.preset = 0;
+        if (!impl->api->CreateFeature(command, &feature)) {
+            return false;
+        }
     }
     impl->feature = desc;
     return true;

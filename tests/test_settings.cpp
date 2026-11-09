@@ -130,6 +130,37 @@ int main() {
     s.frame_generation = BbSettings::FrameGenOff;
     s.low_latency = BbSettings::LowLatencyOff;
     assert(BbSettings::EffectiveLowLatency() == BbSettings::LowLatencyOff);
+    // DLSS model: NGX's letter or number, any case; reserved or unknown values are Auto (0).
+    unsetenv("BB_DLSS_PRESET");
+    write_frame_gen("dlss_preset=K\n");
+    BbSettings::Load();
+    assert(s.dlss_preset == 11);
+    write_frame_gen("dlss_preset=13\n");
+    BbSettings::Load();
+    assert(s.dlss_preset == 13);
+    write_frame_gen("dlss_preset=j\n");
+    BbSettings::Load();
+    assert(s.dlss_preset == 10);
+    write_frame_gen("dlss_preset= k \n");
+    BbSettings::Load();
+    assert(s.dlss_preset == 11);
+    write_frame_gen("dlss_preset=G\n");
+    BbSettings::Load();
+    assert(s.dlss_preset == 0);
+    write_frame_gen("dlss_preset=bogus\n");
+    s.dlss_preset = 5;
+    BbSettings::Load();
+    assert(s.dlss_preset == 0);
+    setenv("BB_DLSS_PRESET", "f", 1);
+    BbSettings::Load();
+    assert(s.dlss_preset == 6);
+    unsetenv("BB_DLSS_PRESET");
+    s.dlss_preset = 12;
+    BbSettings::Save();
+    assert(Read(path).find("dlss_preset=12\n") != std::string::npos);
+    s.dlss_preset = 0;
+    BbSettings::Load();
+    assert(s.dlss_preset == 12);
     unlink(path);
-    std::puts("PASS: settings save keeps other keys, menu position, menu language, frame generation, low latency");
+    std::puts("PASS: settings save keeps other keys, menu position, menu language, frame generation, low latency, DLSS model");
 }

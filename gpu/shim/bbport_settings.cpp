@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -48,6 +49,21 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         }
     } else if (key == "preset") {
         v.preset = std::clamp(i, 0, PresetCount - 1);
+    } else if (key == "dlss_preset") {
+        // The letter or NGX's number (nvsdk_ngx_defs.h); G-I are reserved; anything else is Auto.
+        static constexpr char letters[] = "ABCDEFJKLM";
+        static constexpr int numbers[] = {1, 2, 3, 4, 5, 6, 10, 11, 12, 13};
+        // Spaces around it as the numeric keys allow (atoi): "dlss_preset= K".
+        const auto first = value.find_first_not_of(" \t\r");
+        const std::string text =
+            first == value.npos ? "" : value.substr(first, value.find_last_not_of(" \t\r") - first + 1);
+        v.dlss_preset = 0;
+        for (int n = 0; n < 10; ++n) {
+            if ((text.size() == 1 && std::toupper(static_cast<unsigned char>(text[0])) == letters[n]) ||
+                text == std::to_string(numbers[n])) {
+                v.dlss_preset = numbers[n];
+            }
+        }
     } else if (key == "sharpen") {
         v.sharpen = i != 0;
     } else if (key == "sharpness") {
@@ -321,7 +337,7 @@ void Load() {
         {"BB_REACTIVE_THRESHOLD", "reactive_threshold"}, {"BB_REACTIVE_MAX", "reactive_max"},
         {"BB_UPSCALE_PRESET", "preset"},            {"BB_OBJECT_MOTION", "object_motion"},
         {"BB_FRAME_GEN", "frame_generation"},       {"BB_FRAME_GEN_MULTIPLIER", "frame_generation_multiplier"},
-        {"BB_LOW_LATENCY", "low_latency"},
+        {"BB_LOW_LATENCY", "low_latency"},          {"BB_DLSS_PRESET", "dlss_preset"},
     };
     for (const auto& [env, key] : env_keys) {
         if (const char* value = std::getenv(env)) {
@@ -461,6 +477,7 @@ void Save() {
     }
     put("upscaler", UpscalerName(v.upscaler));
     put("preset", std::to_string(v.preset.load()));
+    put("dlss_preset", std::to_string(v.dlss_preset.load()));
     put("sharpen", flag(v.sharpen));
     put("sharpness", fixed(v.sharpness, 2));
     put("jitter", flag(v.jitter));
