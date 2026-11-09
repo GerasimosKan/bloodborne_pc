@@ -5,7 +5,11 @@
 #   -Version 0.7.5                                  a version of your own
 #   -Source C:\path\to\package.zip                  a Windows package zip instead of deadinside28's latest release
 # Output: dist\UPDATE.<version>-Bloodborne-PC.zip and dist\SHA256SUMS. Publish both as release v<version>.
-param([string]$Version, [string]$Source)
+# Test build (launcher-windows\build-launcher.ps1 uses it):
+#   -Engine C:\path\out     also swap in bb-probe.exe and bb-gpu-capabilities.exe built there, plus the MSYS2 DLLs they
+#                           load. Default version <upstream>-local; dist\version.txt and dist\SHA256SUMS stay untouched.
+#   -NoZip                  leave the package as the folder dist\Bloodborne-PC-local instead of a zip
+param([string]$Version, [string]$Source, [string]$Engine, [switch]$NoZip)
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path "$PSScriptRoot\..\..").Path
 $dist = Join-Path $repo 'dist'
@@ -34,9 +38,28 @@ try {
     if ($pkg.Count -ne 1 -or -not (Test-Path "$($pkg[0].FullName)\bbport-run.exe")) { throw 'Expected one package folder with bbport-run.exe inside the zip.' }
     $pkg = $pkg[0].FullName
     $upstream = (Get-Content "$pkg\VERSION" -TotalCount 1).Trim()
+    if (-not $Version -and $Engine) { $Version = "$upstream-local" }  # a test build must not consume a release number
     if (-not $Version) {
         $last = "$(Get-Content "$dist\version.txt" -TotalCount 1 -ErrorAction SilentlyContinue)"
         $Version = if ($last -match "^$([regex]::Escape($upstream))\.(\d+)$") { "$upstream.$([int]$Matches[1] + 1)" } else { "$upstream.1" }
+    }
+
+    if ($Engine) {
+        Write-Host "== Swapping in the engine from $Engine"
+        foreach ($exe in 'bb-probe.exe', 'bb-gpu-capabilities.exe') {
+            if (-not (Test-Path "$Engine\$exe")) { throw "$Engine\$exe is missing: build the engine first." }
+            Copy-Item "$Engine\$exe" "$pkg\bin" -Force
+        }
+        # The package's DLLs come from the Linux cross sysroot; the local build needs its MSYS2 versions.
+        $enginePath = (Resolve-Path "$Engine\bb-probe.exe").Path
+        $env:MSYSTEM = 'CLANG64'
+        $lddOut = & 'C:\msys64\usr\bin\bash.exe' -lc "ldd `"`$(cygpath -u '$enginePath')`""
+        if ($LASTEXITCODE) { throw 'MSYS2 ldd failed.' }
+        # vulkan-1.dll is the GPU driver's, as in the old build script.
+        $dlls = $lddOut | Select-String '^\s*(\S+\.dll) => /clang64/bin/' | ForEach-Object { $_.Matches[0].Groups[1].Value } |
+            Where-Object { $_ -ne 'vulkan-1.dll' -and (Test-Path "C:\msys64\clang64\bin\$_") } | Sort-Object -Unique
+        foreach ($dll in $dlls) { Copy-Item "C:\msys64\clang64\bin\$dll" "$pkg\bin" -Force }
+        Write-Host "   $(@($dlls).Count) MSYS2 DLLs copied"
     }
 
     Write-Host "== Building the launcher ($Version)"
@@ -59,6 +82,13 @@ try {
     Copy-Item "$PSScriptRoot\README-Windows.txt" $pkg -Force  # 0.7's README describes its own launcher
     Rename-Item $pkg 'Bloodborne-PC'
 
+    if ($NoZip) {
+        $out = Join-Path $dist 'Bloodborne-PC-local'
+        Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
+        Copy-Item "$stage\Bloodborne-PC" $out -Recurse
+        Write-Host "Package folder: $out"
+        return
+    }
     Write-Host '== Packaging'
     $zip = Join-Path $dist "UPDATE.$Version-Bloodborne-PC.zip"
     Remove-Item $zip -ErrorAction SilentlyContinue
@@ -70,6 +100,7 @@ try {
             [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $file.FullName, $name, 'Optimal')
         }
     } finally { $archive.Dispose() }
+    if ($Engine) { Write-Host "Test build: $zip"; return }
     $hash = (Get-FileHash $zip).Hash.ToLower()
     [IO.File]::WriteAllText("$dist\SHA256SUMS", "$hash  $(Split-Path $zip -Leaf)`n")  # sha256sum format, no BOM
     Set-Content "$dist\version.txt" $Version
