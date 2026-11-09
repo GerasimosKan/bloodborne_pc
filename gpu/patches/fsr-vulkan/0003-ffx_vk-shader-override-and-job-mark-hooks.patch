@@ -1,0 +1,72 @@
+From: bbport contributors <bbport@users.noreply.github.com>
+Subject: [PATCH] ffx_vk: shader override and job mark hooks for the port
+
+The port's FSR 3.1 frame generation sets two hooks in the Vulkan backend:
+gpu/upscale/ffx_shaders.cpp (ffxVkShaderOverride) builds the optical flow
+search and the interpolation pass from SPIR-V compiled in the tree, and
+gpu/upscale/fg_profile.cpp (ffxVkJobMark, BB_FG_PROFILE=1) writes a
+timestamp before each compute job. The 0.7 engine links against both;
+without them: undefined symbol ffxVkShaderOverride / ffxVkJobMark.
+---
+diff --git a/upstream/ffx-1.1.4/sdk/src/backends/vk/ffx_vk.cpp b/upstream/ffx-1.1.4/sdk/src/backends/vk/ffx_vk.cpp
+--- a/upstream/ffx-1.1.4/sdk/src/backends/vk/ffx_vk.cpp
++++ b/upstream/ffx-1.1.4/sdk/src/backends/vk/ffx_vk.cpp
+@@ -71,6 +71,13 @@
+ // Constant buffer allocation callback
+ static FfxConstantBufferAllocator s_fpConstantAllocator = nullptr;
+ 
++// bbport: hooks the port sets (gpu/upscale/ffx_shaders.cpp, fg_profile.cpp). ffxVkShaderOverride
++// returns true to build a pass from its own SPIR-V (*size in bytes) in place of the packaged blob;
++// ffxVkJobMark is called before each compute job's dispatch (its dimensions; 0 for indirect).
++extern "C" bool (*ffxVkShaderOverride)(uint32_t effect, uint32_t pass, uint32_t permutationOptions,
++                                       const uint32_t** words, size_t* size) = nullptr;
++extern "C" void (*ffxVkJobMark)(uint32_t x, uint32_t y, uint32_t z) = nullptr;
++
+ // Offset the binding of samplers to avoid collisions
+ constexpr uint32_t SAMPLER_BINDING_SHIFT = 1000;
+ 
+@@ -3378,6 +3385,16 @@
+     // WON'T WORK WITH FSR3!!
+     backendInterface->fpGetPermutationBlobByIndex(effect, pass, FFX_BIND_COMPUTE_SHADER_STAGE, permutationOptions, &shaderBlob);
+     FFX_ASSERT(shaderBlob.data && shaderBlob.size);
++    // bbport: the port's own SPIR-V for this pass, if it has one (same resources and bindings).
++    const uint32_t* shaderCode = (const uint32_t*)shaderBlob.data;
++    size_t shaderCodeSize = shaderBlob.size;
++    const uint32_t* overrideCode = nullptr;
++    size_t overrideSize = 0;
++    if (ffxVkShaderOverride && ffxVkShaderOverride(effect, pass, permutationOptions, &overrideCode, &overrideSize))
++    {
++        shaderCode = overrideCode;
++        shaderCodeSize = overrideSize;
++    }
+ 
+     //////////////////////////////////////////////////////////////////////////
+     // One root signature (or pipeline layout) per pipeline
+@@ -3736,8 +3753,8 @@
+     VkShaderModule shaderModule = VK_NULL_HANDLE;
+     VkShaderModuleCreateInfo shaderModuleCreateInfo = {};
+     shaderModuleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+-    shaderModuleCreateInfo.pCode = (uint32_t*)shaderBlob.data;
+-    shaderModuleCreateInfo.codeSize = shaderBlob.size;
++    shaderModuleCreateInfo.pCode = shaderCode;
++    shaderModuleCreateInfo.codeSize = shaderCodeSize;
+ 
+     if (backendContext->vkFunctionTable.vkCreateShaderModule(backendContext->device, &shaderModuleCreateInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+         return FFX_ERROR_BACKEND_API_ERROR;
+@@ -4092,6 +4109,16 @@
+             backendContext->vkFunctionTable.vkCmdBindDescriptorSets(vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout->pipelineLayout, pipelineLayout->staticBufferUavSet, 1, &effectContext.bindlessBufferUavDescriptorSet, 0, nullptr);
+     }
+     
++    // bbport: a timestamp before the dispatch, so the time to the next mark is this job's.
++    if (ffxVkJobMark)
++    {
++        const uint32_t* dims = job->computeJobDescriptor.dimensions;
++        if (job->computeJobDescriptor.pipeline.cmdSignature)
++            ffxVkJobMark(0, 0, 0);
++        else
++            ffxVkJobMark(dims[0], dims[1], dims[2]);
++    }
++
+     // Dispatch (or dispatch indirect)
+     if (job->computeJobDescriptor.pipeline.cmdSignature)
+     {

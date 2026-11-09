@@ -1,0 +1,2 @@
+# Patches are applied with git apply to LF sources: never CRLF, whatever core.autocrlf says.
+*.patch text eol=lf

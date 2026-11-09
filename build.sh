@@ -64,6 +64,19 @@ if ! ninja -C out/gpu bbgpu $(grep -q "^build bbnet20:" out/gpu/build.ninja && e
     grep -v '^\[' out/gpu-build.log | tail -40 >&2
     echo 'GPU library build failed (full log: out/gpu-build.log)' >&2; exit 1
 fi
+# Windows (MSYS2 CLANG64): CMake links the runtime and the library into one bb-probe.exe
+# (gpu/CMakeLists.txt); the Linux link below (-no-pie, -rdynamic, libbbgpu.so) does not apply.
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*)
+    if ! ninja -C out/gpu bb-probe >> out/gpu-build.log 2>&1; then
+        grep -v '^\[' out/gpu-build.log | tail -40 >&2
+        echo 'bb-probe.exe build failed (full log: out/gpu-build.log)' >&2; exit 1
+    fi
+    cp out/gpu/bb-probe.exe out/
+    "$CC" -std=c11 -O2 -Wall -Wextra -Werror "${includes[@]}" tools/gpu_capabilities.c "${libraries[@]}" \
+        -o out/bb-gpu-capabilities.exe
+    echo "Built $PWD/out/bb-probe.exe"
+    exit 0 ;;
+esac
 # Optional DLSS (NVIDIA RTX): DLSS_SDK_ROOT=<github.com/NVIDIA/DLSS checkout> builds the bridge
 # (gpu/dlss_bridge, the only code using NVIDIA's SDK) and puts it next to bb-probe with NVIDIA's
 # libnvidia-ngx-dlss.so (Super Resolution) and libnvidia-ngx-dlssg.so (Frame Generation, GeForce
