@@ -77,8 +77,19 @@ public partial class MainWindow
         {
             return JsonNode.Parse(File.ReadAllText(path, Encoding.UTF8)) as JsonObject ?? new JsonObject();
         }
-        catch (Exception)
+        catch (Exception error)
         {
+            // A file that does not parse is kept as .bad: the next save replaces it with what is shown.
+            if (error is JsonException)
+            {
+                try
+                {
+                    File.Copy(path, path + ".bad", true);
+                }
+                catch (Exception)
+                {
+                }
+            }
             return new JsonObject();
         }
     }
@@ -86,13 +97,20 @@ public partial class MainWindow
     private static List<string> Strings(JsonNode? node) =>
         node is JsonArray array ? array.Select(n => n?.ToString() ?? "").Where(s => s.Length > 0).ToList() : new();
 
-    private static void WriteJson(string path, JsonObject value)
+    private void WriteJson(string path, JsonObject value)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, value.ToJsonString(new JsonSerializerOptions
+        try
         {
-            WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        }) + "\n", new UTF8Encoding(false));
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            Store.WriteSafely(path, value.ToJsonString(new JsonSerializerOptions
+            {
+                WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            }) + "\n");
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, error.Message, "Bloodborne", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     /// The folder line of both cards: the path, Browse, Open, Refresh.
@@ -152,13 +170,15 @@ public partial class MainWindow
         var (card, _) = Card(item, holder, wide: true);
         var order = new List<string>();
         var disabled = new HashSet<string>();
+        var savedOrder = new List<string>();
 
         void Save()
         {
+            // Mods that are not in the folder right now keep their place and switch (mods.py skips them).
             WriteJson(ModsConfig, new JsonObject
             {
-                ["order"] = new JsonArray(order.Select(n => (JsonNode?)JsonValue.Create(n)).ToArray()),
-                ["disabled"] = new JsonArray(order.Where(disabled.Contains).Select(n => (JsonNode?)JsonValue.Create(n)).ToArray()),
+                ["order"] = new JsonArray(order.Concat(savedOrder.Except(order)).Select(n => (JsonNode?)JsonValue.Create(n)).ToArray()),
+                ["disabled"] = new JsonArray(disabled.Select(n => (JsonNode?)JsonValue.Create(n)).ToArray()),
             });
         }
 
@@ -171,7 +191,8 @@ public partial class MainWindow
                 : new List<string>();
             var profile = ReadJson(ModsConfig);
             // Saved order first, new folders after it (alphabetically): scripts/mods.py selected().
-            order = Strings(profile["order"]).Concat(available).Distinct().Where(available.Contains).ToList();
+            savedOrder = Strings(profile["order"]);
+            order = savedOrder.Concat(available).Distinct().Where(available.Contains).ToList();
             disabled = Strings(profile["disabled"]).ToHashSet();
             path.Text = ModsDir + (order.Count == 0 ? " — " + M("no_mods") : "");
             for (var i = 0; i < order.Count; ++i)

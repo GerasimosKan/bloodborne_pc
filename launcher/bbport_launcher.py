@@ -18,6 +18,15 @@ from bbport_launcher_trophies import TrophiesPage
 from bbport_launcher_upscalers import UpscalerFiles
 
 
+def store_ini(shown, now):
+    """Writes to bbport.ini the keys of `now` that differ from `shown` (the rows when built or last
+    stored) or are not in the file; the rest stays as on disk: the game's menu writes it too."""
+    values, lines = load_ini()
+    values.update({key: value for key, value in now.items()
+                   if key not in values or key not in shown or shown[key] != value})
+    save_ini(values, lines)
+
+
 # The window's pages and lists live in the bbport_launcher_*.py modules (mixins).
 class LauncherWindow(ContentPages, OnlinePage, TrophiesPage, LogPage, UpscalerFiles,
                      Adw.ApplicationWindow):
@@ -30,6 +39,7 @@ class LauncherWindow(ContentPages, OnlinePage, TrophiesPage, LogPage, UpscalerFi
         self.process = None
         self.stream = None
         self.fsr411_build = None  # tools/fsr4cap/build_assets.sh while it runs
+        self.closing = False
         self.build()
         self.connect("close-request", self.on_close)
 
@@ -103,6 +113,7 @@ class LauncherWindow(ContentPages, OnlinePage, TrophiesPage, LogPage, UpscalerFi
         self.update_game_status()
         self.update_user_status()
         self.update_upscaler_status()
+        self.ini_shown = self.ini_rows()
 
     def on_section_selected(self, _box, row):
         if row is None:
@@ -697,9 +708,8 @@ class LauncherWindow(ContentPages, OnlinePage, TrophiesPage, LogPage, UpscalerFi
 
     def set_control(self, kind, name, value):
         """value: the binding, or None for the default."""
-        self.ini[f"{kind}.{name}"] = value
+        self.store({f"{kind}.{name}": value})
         self.show_control(kind, name)
-        self.store()
 
     def assign_control(self, kind, name, append=False):
         """The next key or button pressed: the binding, or (append) one more for the same action
@@ -829,7 +839,8 @@ class LauncherWindow(ContentPages, OnlinePage, TrophiesPage, LogPage, UpscalerFi
         self.gamepad_row.set_subtitle("\n".join(
             line for line in (selected, tr("Выбранный берётся, как только подключится")) if line))
 
-    def store(self):
+    def store(self, bindings=None):
+        """bindings: control bindings to write too ({"key.jump": value, None for the default})."""
         s = self.settings
         s["gamepad"] = combo_value(self.gamepad_row)
         s["gamepad_name"] = self.gamepad_row.names[self.gamepad_row.get_selected()]
@@ -866,12 +877,19 @@ class LauncherWindow(ContentPages, OnlinePage, TrophiesPage, LogPage, UpscalerFi
         self.save_mod_profile()
         self.save_patch_profile()
         save_settings(s)
+        now = self.ini_rows()
+        store_ini(self.ini_shown, {**now, **(bindings or {})})
+        self.ini_shown = now
+        self.ini, self.ini_lines = load_ini()
+
+    def ini_rows(self):
+        """The bbport.ini keys as the rows show them now."""
         frame_gen_choice_now = combo_value(self.frame_gen_row)
         if frame_gen_choice_now == "fsr3":
             frame_generation, frame_generation_multiplier = "fsr3", self.ini.get("frame_generation_multiplier", "2")
         else:
             frame_generation, frame_generation_multiplier = frame_gen_ini(frame_gen_choice_now)
-        self.ini.update({
+        return {
             "upscaler": combo_value(self.upscaler_row),
             "frame_generation": frame_generation,
             "frame_generation_multiplier": frame_generation_multiplier,
@@ -897,9 +915,7 @@ class LauncherWindow(ContentPages, OnlinePage, TrophiesPage, LogPage, UpscalerFi
             "game_voice_language": combo_value(self.voice_language_row),
             **{key: "1" if row.get_active() else "0" for key, row in self.effect_rows.items()},
             "anti_aliasing": combo_value(self.aa_row),
-        })
-        save_ini(self.ini, self.ini_lines)
-        self.ini, self.ini_lines = load_ini()
+        }
 
     def environment(self):
         return game_environment(self.settings)
@@ -1000,12 +1016,16 @@ class LauncherWindow(ContentPages, OnlinePage, TrophiesPage, LogPage, UpscalerFi
             pass
         status = process.get_exit_status() if process.get_if_exited() else -1
         self.process = None
-        self.update_launch_button()
-        self.update_game_status()
+        if self.closing:  # on_close stored already; the window is gone
+            return
+        # The game's menu wrote bbport.ini: keep what was changed here, then show the file's values.
+        self.store()
+        self.build()
         self.refresh_trophies()  # what this session unlocked, and the names once decrypted
         self.append_log(tr("\n— игра завершилась (код {}) —\n").format(status))
 
     def on_close(self, _window):
+        self.closing = True
         self.store()
         if self.process:
             self.stop_game()

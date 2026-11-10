@@ -104,7 +104,8 @@ public sealed class Store
         {
             JsonValueKind.True => "1",
             JsonValueKind.False => "0",
-            JsonValueKind.Number => node.GetValue<double>().ToString(CultureInfo.InvariantCulture),
+            // not GetValue<double>(): it throws on the int-backed node SetValue creates
+            JsonValueKind.Number => node.ToJsonString(),
             _ => node.ToString(),
         };
     }

@@ -277,22 +277,45 @@ public partial class MainWindow
     }
 
     private Border ChoiceCard(JsonObject item, List<(string Value, string Label, string Note)> choices,
-                              string current, Action<string> changed)
+                              string current, Action<string> changed,
+                              Task<List<(string Value, string Label, string Note)>>? probed = null)
     {
         var combo = new ComboBox { MinWidth = 220 };
-        foreach (var (value, label, _) in choices)
-            combo.Items.Add(new ComboBoxItem { Content = label, Tag = value });
         var (card, note) = Card(item, combo);
-        var index = choices.FindIndex(c => c.Value == current);
-        combo.SelectedIndex = index >= 0 ? index : 0;
-        ShowNote(note, choices[combo.SelectedIndex].Note);
+        var filling = false;
+        void Fill()
+        {
+            filling = true;
+            combo.Items.Clear();
+            foreach (var (value, label, _) in choices)
+                combo.Items.Add(new ComboBoxItem { Content = label, Tag = value });
+            var index = choices.FindIndex(c => c.Value == current);
+            combo.SelectedIndex = index >= 0 ? index : 0;
+            ShowNote(note, choices[combo.SelectedIndex].Note);
+            filling = false;
+        }
+        Fill();
         combo.SelectionChanged += (_, _) =>
         {
-            if (combo.SelectedIndex < 0)
+            if (filling || combo.SelectedIndex < 0)
                 return;
             ShowNote(note, choices[combo.SelectedIndex].Note);
-            changed(choices[combo.SelectedIndex].Value);
+            current = choices[combo.SelectedIndex].Value;
+            changed(current);
         };
+        // The choices a probe of the machine lists come when it returns: the page may be rebuilt by then.
+        var gone = false;
+        card.Unloaded += (_, _) => gone = true;
+        async void FillProbed()
+        {
+            var listed = await probed!;
+            if (gone)
+                return;
+            choices = listed;
+            Fill();
+        }
+        if (probed is not null)
+            FillProbed();
         return card;
     }
 
@@ -727,42 +750,33 @@ public partial class MainWindow
         });
     }
 
-    private Border GpuCard(JsonObject item)
+    /// The list DetectGpu got at the start, or (it has none yet, or failed) this row's own probe.
+    private Border GpuCard(JsonObject item) =>
+        ChoiceCard(item, GpuChoices(), store.Get("gpu_id"), value => store.Set("gpu_id", value),
+                   gpus is null ? ProbeGpus() : null);
+
+    private List<(string Value, string Label, string Note)> GpuChoices()
     {
-        // bb-gpu-capabilities.exe --gpus: index, vendor, type, name, the port's own choice.
-        if (gpus is null)
-        {
-            gpus = new();
-            try
-            {
-                var tool = Path.Combine(Store.PackageDir, "bin", "bb-gpu-capabilities.exe");
-                using var process = Process.Start(new ProcessStartInfo(tool, "--gpus")
-                {
-                    RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true,
-                })!;
-                var output = process.StandardOutput.ReadToEnd();
-                process.WaitForExit(10000);
-                foreach (var line in output.Split('\n'))
-                {
-                    var parts = line.TrimEnd('\r').Split('\t');
-                    if (parts.Length == 5)
-                        gpus.Add((parts[0], parts[3], parts[4] == "1"));
-                }
-            }
-            catch (Exception)
-            {
-            }
-        }
-        var best = gpus.FirstOrDefault(g => g.Best).Name;
-        var choices = new List<(string, string, string)> { ("", T("auto_gpu") + (best is null ? "" : $": {best}"), "") };
-        choices.AddRange(gpus.Select(g => (g.Index, g.Name, "")));
-        return ChoiceCard(item, choices, store.Get("gpu_id"), value => store.Set("gpu_id", value));
+        var best = gpus?.FirstOrDefault(g => g.Best).Name;
+        var choices = new List<(string Value, string Label, string Note)> { ("", T("auto_gpu") + (best is null ? "" : $": {best}"), "") };
+        if (gpus is not null)
+            choices.AddRange(gpus.Select(g => (g.Index, g.Name, "")));
+        return choices;
     }
 
-    /// The lines of bin\bb-gpu-capabilities.exe ARG split at tabs ([] when it fails).
-    private static List<string[]> ToolRows(string argument)
+    private async Task<List<(string Value, string Label, string Note)>> ProbeGpus()
     {
-        var rows = new List<string[]>();
+        // bb-gpu-capabilities.exe --gpus: index, vendor, type, name, the port's own choice.
+        var rows = (await ToolRows("--gpus"))?.Where(parts => parts.Length == 5)
+            .Select(parts => (parts[0], parts[3], parts[4] == "1")).ToList();
+        if (rows?.Count > 0)
+            gpus = rows;
+        return GpuChoices();
+    }
+
+    /// The lines of bin\bb-gpu-capabilities.exe ARG split at tabs (null when it fails or takes over 10 s).
+    private static async Task<List<string[]>?> ToolRows(string argument)
+    {
         try
         {
             var tool = Path.Combine(Store.PackageDir, "bin", "bb-gpu-capabilities.exe");
@@ -771,44 +785,76 @@ public partial class MainWindow
                 RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true,
                 StandardOutputEncoding = Encoding.UTF8,
             })!;
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(10000);
-            rows.AddRange(output.Split('\n').Select(line => line.TrimEnd('\r').Split('\t')));
+            // A hung probe is killed with its children (they hold the pipe too), which ends the read.
+            using var timeout = new CancellationTokenSource(10000);
+            using var kill = timeout.Token.Register(() =>
+            {
+                try
+                {
+                    process.Kill(true);
+                }
+                catch (Exception)
+                {
+                }
+            });
+            var output = await process.StandardOutput.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            if (!timeout.IsCancellationRequested && process.ExitCode == 0)
+                return output.Split('\n').Select(line => line.TrimEnd('\r').Split('\t')).ToList();
         }
         catch (Exception)
         {
         }
-        return rows;
+        return null;
     }
 
     private List<string[]>? displays, gamepads;
 
-    private Border DisplayCard(JsonObject item)
+    private Border DisplayCard(JsonObject item) =>
+        ChoiceCard(item, DisplayChoices(), store.Get("display"), value => store.Set("display", value),
+                   displays is null ? ProbeDisplays() : null);
+
+    private async Task<List<(string Value, string Label, string Note)>> ProbeDisplays()
+    {
+        // A failed probe leaves the list unset, so the next visit asks again.
+        displays = (await ToolRows("--displays"))?.Where(row => row.Length == 3).ToList() ?? displays;
+        return DisplayChoices();
+    }
+
+    private List<(string Value, string Label, string Note)> DisplayChoices()
     {
         // --displays: name, WxH, primary. The value is the name, or the number when names repeat.
-        displays ??= ToolRows("--displays").Where(row => row.Length == 3).ToList();
-        var names = displays.Select(row => row[0]).ToList();
-        var choices = new List<(string, string, string)> { ("", T("primary"), "") };
-        for (var i = 0; i < displays.Count; ++i)
+        var listed = displays ?? new();
+        var names = listed.Select(row => row[0]).ToList();
+        var choices = new List<(string Value, string Label, string Note)> { ("", T("primary"), "") };
+        for (var i = 0; i < listed.Count; ++i)
         {
-            var (name, size, primary) = (displays[i][0], displays[i][1], displays[i][2] == "1");
+            var (name, size, primary) = (listed[i][0], listed[i][1], listed[i][2] == "1");
             var value = names.Count(n => n == name) == 1 ? name : (i + 1).ToString(CultureInfo.InvariantCulture);
             choices.Add((value, $"{i + 1}: {name} ({size.Replace('x', '×')})" + (primary ? T("is_primary") : ""), ""));
         }
         var current = store.Get("display");
-        if (current.Length > 0 && choices.All(c => c.Item1 != current))
+        if (current.Length > 0 && choices.All(c => c.Value != current))
             choices.Add((current, string.Format(T("not_connected"), current), ""));
-        return ChoiceCard(item, choices, current, value => store.Set("display", value));
+        return choices;
     }
 
-    private Border GamepadCard(JsonObject item) => ChoiceCard(item, GamepadChoices(), store.Get("gamepad"), SetGamepad);
+    private Border GamepadCard(JsonObject item) =>
+        ChoiceCard(item, GamepadChoices(), store.Get("gamepad"), SetGamepad, ProbeGamepads());
+
+    /// The pads connected now (each visit of the page asks: one may be plugged in since).
+    private async Task<List<(string Value, string Label, string Note)>> ProbeGamepads()
+    {
+        gamepads = (await ToolRows("--gamepads"))?.Where(row => row.Length == 2).ToList() ?? gamepads;
+        return GamepadChoices();
+    }
 
     /// --gamepads: SDL GUID, name; the saved one marked when it is not connected.
     private List<(string Value, string Label, string Note)> GamepadChoices()
     {
-        gamepads ??= ToolRows("--gamepads").Where(row => row.Length == 2).ToList();
         var choices = new List<(string Value, string Label, string Note)> { ("", T("first_pad"), "") };
-        choices.AddRange(gamepads.Select(row => (row[0], row[1], "")));
+        if (gamepads is not null)
+            choices.AddRange(gamepads.Select(row => (row[0], row[1], "")));
         var current = store.Get("gamepad");
         if (current.Length > 0 && choices.All(c => c.Value != current))
         {

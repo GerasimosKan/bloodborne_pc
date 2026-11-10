@@ -69,11 +69,13 @@ public partial class MainWindow
         var tops = archive.Entries.Select(e => e.FullName.Replace('\\', '/').Split('/')[0]).Distinct().ToList();
         string? top = tops.Count == 1 && tops[0] is not ("" or "." or "..") ? tops[0] : null;
         bool strip = top != null && archive.Entries.All(e => e.FullName.Replace('\\', '/').Contains('/'));
+        ZipArchiveEntry? version = null;
         foreach (var entry in archive.Entries)
         {
             string name = entry.FullName.Replace('\\', '/');
             if (strip) name = name[(top!.Length + 1)..];
             if (name == "") continue;
+            if (name.Equals("VERSION", StringComparison.OrdinalIgnoreCase)) { version = entry; continue; }
             string target = Path.GetFullPath(Path.Combine(rootFull, name));
             if (!target.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
                 throw new IOException("The package contains a path outside the install folder: " + entry.FullName);
@@ -81,6 +83,11 @@ public partial class MainWindow
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             entry.ExtractToFile(target, overwrite: true);
         }
+        // The caller renamed the running exe away, so it exists again only if the package brought a new one.
+        if (Environment.ProcessPath is string exe && !File.Exists(exe))
+            throw new IOException("The package contains no " + Path.GetFileName(exe) + ".");
+        // VERSION last: a failure above leaves the old version in place, so the update is offered again.
+        version?.ExtractToFile(Path.Combine(rootFull, "VERSION"), overwrite: true);
     }
 
     async void CheckForUpdate()

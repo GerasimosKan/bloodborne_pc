@@ -362,6 +362,16 @@ public partial class MainWindow : Window
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{logs}\"") { UseShellExecute = true });
     }
 
+    /// The Controller page's list, filled when the probe returns (the window does not wait for it).
+    async void ListGamepads()
+    {
+        var choices = await ProbeGamepads();
+        syncing = true;
+        FillCombo(ControllerCombo, choices);
+        syncing = false;
+        RefreshBound();
+    }
+
     void Nav_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button button) return;
@@ -376,10 +386,7 @@ public partial class MainWindow : Window
             case "Graphics": BuildPage(GraphicsExtra, new[] { "display", "graphics", "effects" }, OldKeys); break;
             case "Performance": BuildPage(PerformanceExtra, new[] { "performance" }, OldKeys); break;
             case "Controller":
-                syncing = true;
-                FillCombo(ControllerCombo, GamepadChoices());
-                syncing = false;
-                RefreshBound();
+                ListGamepads();
                 BuildPage(ControllerExtra, new[] { "controls" }, OldKeys);
                 break;
             case "Online": BuildPage(OnlineItems, new[] { "online" }, OldKeys); break;
